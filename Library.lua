@@ -1,198 +1,191 @@
+--// securewatch-ui Linoria-style Library
+
 local Library = {}
 
--- THEME (your pastel pink defaults)
+-- THEME
 Library.Theme = {
-    Accent       = Color3.fromRGB(255, 170, 200),
-    AccentDark   = Color3.fromRGB(210, 130, 165),
-    Background   = Color3.fromRGB(25, 20, 25),
-    Main         = Color3.fromRGB(20, 16, 20),
-    Topbar       = Color3.fromRGB(30, 25, 30),
-    Border       = Color3.fromRGB(255, 170, 200),
-    Text         = Color3.fromRGB(255, 255, 255)
+    Background = Color3.fromRGB(20, 20, 25),
+    Border     = Color3.fromRGB(60, 60, 70),
+    Accent     = Color3.fromRGB(255, 170, 200), -- pastel pink
+    Text       = Color3.fromRGB(235, 235, 245)
 }
 
--- Create ScreenGui
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "KittywareUI"
-ScreenGui.Parent = game:GetService("CoreGui")
+-- SCREEN GUI
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
 
--- WINDOW CREATION
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "securewatchUILib"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+Library._UIVisible = true
+
+---------------------------------------------------------------------
+-- WINDOW + TOPBAR + DRAGGING + TAB CONTAINER
+---------------------------------------------------------------------
+
 function Library:Window(title)
     local Window = {}
 
-    -- Main frame
+    -- Main window frame
     local Main = Instance.new("Frame")
-    Main.Name = "Main"
-    Main.Size = UDim2.new(0, 600, 0, 450)
-    Main.Position = UDim2.new(0.5, -300, 0.5, -225)
-    Main.BackgroundColor3 = self.Theme.Main
+    Main.Name = "MainWindow"
+    Main.Size = UDim2.new(0, 600, 0, 400)
+    Main.Position = UDim2.new(0.5, -300, 0.5, -200)
+    Main.BackgroundColor3 = self.Theme.Background
     Main.BorderColor3 = self.Theme.Border
+    Main.Active = true
+    Main.Draggable = false
     Main.Parent = ScreenGui
 
     -- Topbar
     local Topbar = Instance.new("Frame")
     Topbar.Name = "Topbar"
-    Topbar.Size = UDim2.new(1, 0, 0, 30)
-    Topbar.BackgroundColor3 = self.Theme.Topbar
+    Topbar.Size = UDim2.new(1, 0, 0, 28)
+    Topbar.BackgroundColor3 = self.Theme.Background
     Topbar.BorderColor3 = self.Theme.Border
     Topbar.Parent = Main
 
-    -- Title
-    local Title = Instance.new("TextLabel")
-    Title.Name = "Title"
-    Title.Size = UDim2.new(1, -10, 1, 0)
-    Title.Position = UDim2.new(0, 5, 0, 0)
-    Title.BackgroundTransparency = 1
-    Title.Text = title
-    Title.Font = Enum.Font.Code
-    Title.TextSize = 16
-    Title.TextColor3 = self.Theme.Text
-    Title.TextXAlignment = Enum.TextXAlignment.Left
-    Title.Parent = Topbar
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Name = "Title"
+    TitleLabel.Size = UDim2.new(1, -10, 1, 0)
+    TitleLabel.Position = UDim2.new(0, 5, 0, 0)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Text = title or "securewatch-ui"
+    TitleLabel.Font = Enum.Font.Code
+    TitleLabel.TextSize = 16
+    TitleLabel.TextColor3 = self.Theme.Text
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = Topbar
 
     -- Dragging
-    local dragging = false
-    local dragStart, startPos
+    do
+        local dragging = false
+        local dragStart, startPos
 
-    Topbar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = Main.Position
-        end
-    end)
+        Topbar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = Main.Position
+            end
+        end)
 
-    Topbar.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
+        Topbar.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
 
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            Main.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-
-    -- Store references
-    Window.Main = Main
-    Window.Topbar = Topbar
-
-    -- Tabs will be added later
-    function Window:Tab(name)
-        -- placeholder, implemented in Step 2
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = input.Position - dragStart
+                Main.Position = UDim2.new(
+                    startPos.X.Scale,
+                    startPos.X.Offset + delta.X,
+                    startPos.Y.Scale,
+                    startPos.Y.Offset + delta.Y
+                )
+            end
+        end)
     end
 
-    return Window
-end
-
--- TAB SYSTEM
-function Library:CreateTabButton(name, parent)
-    local Button = Instance.new("TextButton")
-    Button.Name = name .. "_TabButton"
-    Button.Size = UDim2.new(0, 100, 1, 0)
-    Button.BackgroundTransparency = 1
-    Button.Text = name
-    Button.Font = Enum.Font.Code
-    Button.TextSize = 15
-    Button.TextColor3 = self.Theme.Text
-    Button.Parent = parent
-    return Button
-end
-
-function Library:Window(title)
-    local Window = {}
-
-    -- (this part stays the same from Step 1)
-    -- Window.Main, Window.Topbar, dragging, etc.
-
-    -- TAB BAR
+    -- Tab buttons container
     local TabBar = Instance.new("Frame")
     TabBar.Name = "TabBar"
-    TabBar.Size = UDim2.new(1, 0, 0, 30)
-    TabBar.Position = UDim2.new(0, 0, 0, 30)
+    TabBar.Size = UDim2.new(0, 120, 1, -28)
+    TabBar.Position = UDim2.new(0, 0, 0, 28)
     TabBar.BackgroundColor3 = self.Theme.Background
     TabBar.BorderColor3 = self.Theme.Border
-    TabBar.Parent = Window.Main
+    TabBar.Parent = Main
 
-    local TabButtons = Instance.new("Frame")
-    TabButtons.Name = "TabButtons"
-    TabButtons.Size = UDim2.new(1, -10, 1, 0)
-    TabButtons.Position = UDim2.new(0, 5, 0, 0)
-    TabButtons.BackgroundTransparency = 1
-    TabButtons.Parent = TabBar
+    local TabList = Instance.new("UIListLayout")
+    TabList.Padding = UDim.new(0, 4)
+    TabList.FillDirection = Enum.FillDirection.Vertical
+    TabList.SortOrder = Enum.SortOrder.LayoutOrder
+    TabList.Parent = TabBar
 
-    local UIList = Instance.new("UIListLayout")
-    UIList.FillDirection = Enum.FillDirection.Horizontal
-    UIList.Padding = UDim.new(0, 10)
-    UIList.Parent = TabButtons
+    -- Tab content area
+    local TabContentHolder = Instance.new("Frame")
+    TabContentHolder.Name = "TabContentHolder"
+    TabContentHolder.Size = UDim2.new(1, -120, 1, -28)
+    TabContentHolder.Position = UDim2.new(0, 120, 0, 28)
+    TabContentHolder.BackgroundColor3 = self.Theme.Background
+    TabContentHolder.BorderColor3 = self.Theme.Border
+    TabContentHolder.Parent = Main
 
-    Window.Tabs = {}
+    local currentTab
 
+    -----------------------------------------------------------------
+    -- TAB CREATION
+    -----------------------------------------------------------------
     function Window:Tab(name)
         local Tab = {}
 
-        -- Create tab button
-        local Button = Library:CreateTabButton(name, TabButtons)
+        -- Tab button
+        local Button = Instance.new("TextButton")
+        Button.Name = name .. "_TabButton"
+        Button.Size = UDim2.new(1, 0, 0, 24)
+        Button.BackgroundColor3 = Library.Theme.Background
+        Button.BorderColor3 = Library.Theme.Border
+        Button.Text = name
+        Button.Font = Enum.Font.Code
+        Button.TextSize = 14
+        Button.TextColor3 = Library.Theme.Text
+        Button.Parent = TabBar
 
         -- Tab content frame
         local Content = Instance.new("Frame")
         Content.Name = name .. "_Content"
-        Content.Size = UDim2.new(1, 0, 1, -60)
-        Content.Position = UDim2.new(0, 0, 0, 60)
+        Content.Size = UDim2.new(1, -10, 1, -10)
+        Content.Position = UDim2.new(0, 5, 0, 5)
         Content.BackgroundTransparency = 1
         Content.Visible = false
-        Content.Parent = Window.Main
+        Content.Parent = TabContentHolder
 
-        -- LEFT COLUMN
+        -- Left and Right columns
         local Left = Instance.new("Frame")
-        Left.Name = "LeftColumn"
-        Left.Size = UDim2.new(0.5, -10, 1, 0)
-        Left.Position = UDim2.new(0, 10, 0, 0)
+        Left.Name = "Left"
+        Left.Size = UDim2.new(0.5, -6, 1, 0)
+        Left.Position = UDim2.new(0, 0, 0, 0)
         Left.BackgroundTransparency = 1
         Left.Parent = Content
 
-        -- RIGHT COLUMN
         local Right = Instance.new("Frame")
-        Right.Name = "RightColumn"
-        Right.Size = UDim2.new(0.5, -10, 1, 0)
-        Right.Position = UDim2.new(0.5, 0, 0, 0)
+        Right.Name = "Right"
+        Right.Size = UDim2.new(0.5, -6, 1, 0)
+        Right.Position = UDim2.new(0.5, 6, 0, 0)
         Right.BackgroundTransparency = 1
         Right.Parent = Content
 
-        -- Store references
-        Tab.Button = Button
-        Tab.Content = Content
         Tab.Left = Left
         Tab.Right = Right
+        Tab.Button = Button
+        Tab.Content = Content
 
         -- Tab switching
         Button.MouseButton1Click:Connect(function()
-            for _, t in pairs(Window.Tabs) do
-                t.Content.Visible = false
-                t.Button.TextColor3 = Library.Theme.Text
+            if currentTab then
+                currentTab.Content.Visible = false
+                currentTab.Button.BackgroundColor3 = Library.Theme.Background
             end
-            Content.Visible = true
-            Button.TextColor3 = Library.Theme.Accent
+            currentTab = Tab
+            currentTab.Content.Visible = true
+            currentTab.Button.BackgroundColor3 = Library.Theme.Border
         end)
 
-        table.insert(Window.Tabs, Tab)
-
-        -- First tab auto-select
-        if #Window.Tabs == 1 then
-            Content.Visible = true
-            Button.TextColor3 = Library.Theme.Accent
+        -- Default to first tab
+        if not currentTab then
+            currentTab = Tab
+            currentTab.Content.Visible = true
+            currentTab.Button.BackgroundColor3 = Library.Theme.Border
         end
 
-        -- Groupbox creation (Step 3)
-        function Tab:Group(name, side)
-            -- placeholder, implemented next
+        -- Groupbox creation
+        function Tab:Group(gname, side)
+            local parent = (side == "Right") and Right or Left
+            return Library:CreateGroupbox(gname, parent)
         end
 
         return Tab
@@ -200,14 +193,18 @@ function Library:Window(title)
 
     return Window
 end
+
+---------------------------------------------------------------------
 -- GROUPBOX SYSTEM
+---------------------------------------------------------------------
+
 function Library:CreateGroupbox(name, parent)
     local Box = {}
 
     -- Outer frame
     local Frame = Instance.new("Frame")
     Frame.Name = name .. "_Groupbox"
-    Frame.Size = UDim2.new(1, -10, 0, 200) -- fixed height like Linoria
+    Frame.Size = UDim2.new(1, -10, 0, 200) -- fixed height
     Frame.BackgroundColor3 = self.Theme.Background
     Frame.BorderColor3 = self.Theme.Border
     Frame.Parent = parent
@@ -233,60 +230,53 @@ function Library:CreateGroupbox(name, parent)
     Scroll.BackgroundTransparency = 1
     Scroll.BorderSizePixel = 0
     Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    Scroll.ScrollBarThickness = 2 -- thin Linoria-style scrollbar
+    Scroll.ScrollBarThickness = 2
     Scroll.ScrollBarImageColor3 = self.Theme.Accent
     Scroll.Parent = Frame
 
-    -- Layout inside scroll area
     local Layout = Instance.new("UIListLayout")
     Layout.Padding = UDim.new(0, 8)
     Layout.Parent = Scroll
 
-    -- Auto-update scroll size
     Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y)
     end)
 
-    -- Store references
     Box.Frame = Frame
     Box.Scroll = Scroll
 
-    -- ELEMENTS (added in Step 4)
+    -----------------------------------------------------------------
+    -- GROUPBOX ELEMENT BINDINGS
+    -----------------------------------------------------------------
+
     function Box:Toggle(text, default, callback)
-        -- placeholder
+        return Library:CreateToggle(text, default, callback, self.Scroll)
     end
 
     function Box:Keybind(text, defaultKey, mode, callback)
-        -- placeholder
+        return Library:CreateKeybind(text, defaultKey, mode, callback, self.Scroll)
     end
+
+    function Box:Button(text, callback)
+        return Library:CreateButton(text, callback, self.Scroll)
+    end
+
     function Box:Slider(text, min, max, default, callback)
-       return Library:CreateSlider(text, min, max, default, callback, self.Scroll)
+        return Library:CreateSlider(text, min, max, default, callback, self.Scroll)
+    end
+
+    function Box:Dropdown(text, list, default, callback)
+        return Library:CreateDropdown(text, list, default, callback, self.Scroll)
     end
 
     return Box
 end
 
--- Attach groupbox creation to tabs
-function Library:Window(title)
-    local Window = {}
+---------------------------------------------------------------------
+-- ELEMENTS
+---------------------------------------------------------------------
 
-    -- (Window + Topbar + Tabs from Step 1 & 2)
-
-    function Window:Tab(name)
-        local Tab = {}
-
-        -- (Tab button + content + columns from Step 2)
-
-        function Tab:Group(name, side)
-            local parent = (side == "Right") and Tab.Right or Tab.Left
-            return Library:CreateGroupbox(name, parent)
-        end
-
-        return Tab
-    end
-
-    return Window
-end
+-- TOGGLE
 function Library:CreateToggle(text, default, callback, parent)
     local Toggle = {}
 
@@ -327,7 +317,9 @@ function Library:CreateToggle(text, default, callback, parent)
 
     local function Update()
         Box.BackgroundColor3 = state and Library.Theme.Accent or Library.Theme.Background
-        if callback then callback(state) end
+        if callback then
+            task.spawn(callback, state)
+        end
     end
 
     Button.MouseButton1Click:Connect(function()
@@ -337,15 +329,16 @@ function Library:CreateToggle(text, default, callback, parent)
 
     Update()
 
-    Toggle.Frame = Frame
-    Toggle.Set = function(_, val)
+    function Toggle:Set(val)
         state = val
         Update()
     end
 
+    Toggle.Frame = Frame
     return Toggle
 end
 
+-- KEYBIND
 function Library:CreateKeybind(text, defaultKey, mode, callback, parent)
     local Keybind = {}
 
@@ -372,7 +365,7 @@ function Library:CreateKeybind(text, defaultKey, mode, callback, parent)
     Button.Position = UDim2.new(0.5, 5, 0, 0)
     Button.BackgroundColor3 = Library.Theme.Background
     Button.BorderColor3 = Library.Theme.Border
-    Button.Text = defaultKey
+    Button.Text = defaultKey or "Q"
     Button.Font = Enum.Font.Code
     Button.TextSize = 14
     Button.TextColor3 = Library.Theme.Text
@@ -380,13 +373,16 @@ function Library:CreateKeybind(text, defaultKey, mode, callback, parent)
 
     local binding = false
     local currentKey = Enum.KeyCode[defaultKey] or Enum.KeyCode.Q
+    local bindMode = mode or "Toggle"
 
     Button.MouseButton1Click:Connect(function()
         binding = true
         Button.Text = "..."
     end)
 
-    game:GetService("UserInputService").InputBegan:Connect(function(input)
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+
         if binding then
             if input.KeyCode ~= Enum.KeyCode.Unknown then
                 currentKey = input.KeyCode
@@ -395,14 +391,18 @@ function Library:CreateKeybind(text, defaultKey, mode, callback, parent)
             end
         else
             if input.KeyCode == currentKey then
-                if callback then callback() end
+                if callback then
+                    task.spawn(callback)
+                end
             end
         end
     end)
 
+    Keybind.Frame = Frame
     return Keybind
 end
 
+-- BUTTON
 function Library:CreateButton(text, callback, parent)
     local Button = Instance.new("TextButton")
     Button.Name = text .. "_Button"
@@ -416,12 +416,15 @@ function Library:CreateButton(text, callback, parent)
     Button.Parent = parent
 
     Button.MouseButton1Click:Connect(function()
-        if callback then callback() end
+        if callback then
+            task.spawn(callback)
+        end
     end)
 
     return Button
 end
 
+-- SLIDER
 function Library:CreateSlider(text, min, max, default, callback, parent)
     local Slider = {}
 
@@ -465,7 +468,9 @@ function Library:CreateSlider(text, min, max, default, callback, parent)
         value = math.floor(min + (max - min) * rel)
         Fill.Size = UDim2.new(rel, 0, 1, 0)
         Label.Text = text .. " (" .. value .. ")"
-        if callback then callback(value) end
+        if callback then
+            task.spawn(callback, value)
+        end
     end
 
     Bar.InputBegan:Connect(function(input)
@@ -475,21 +480,23 @@ function Library:CreateSlider(text, min, max, default, callback, parent)
         end
     end)
 
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
+    UserInputService.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             Update(input.Position.X)
         end
     end)
 
-    game:GetService("UserInputService").InputEnded:Connect(function(input)
+    UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
         end
     end)
 
+    Slider.Frame = Frame
     return Slider
 end
 
+-- DROPDOWN
 function Library:CreateDropdown(text, list, default, callback, parent)
     local Dropdown = {}
 
@@ -505,7 +512,7 @@ function Library:CreateDropdown(text, list, default, callback, parent)
     Label.Size = UDim2.new(1, -10, 1, 0)
     Label.Position = UDim2.new(0, 5, 0, 0)
     Label.BackgroundTransparency = 1
-    Label.Text = text .. ": " .. default
+    Label.Text = text .. ": " .. (default or (list[1] or ""))
     Label.Font = Enum.Font.Code
     Label.TextSize = 14
     Label.TextColor3 = Library.Theme.Text
@@ -540,19 +547,27 @@ function Library:CreateDropdown(text, list, default, callback, parent)
             Label.Text = text .. ": " .. item
             ListFrame.Visible = false
             Open = false
-            if callback then callback(item) end
+            if callback then
+                task.spawn(callback, item)
+            end
         end)
     end
 
-    Frame.MouseButton1Click:Connect(function()
-        Open = not Open
-        ListFrame.Visible = Open
+    Frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            Open = not Open
+            ListFrame.Visible = Open
+        end
     end)
 
+    Dropdown.Frame = Frame
     return Dropdown
 end
 
+---------------------------------------------------------------------
 -- NOTIFICATION SYSTEM
+---------------------------------------------------------------------
+
 function Library:Notify(text, duration)
     duration = duration or 3
 
@@ -576,7 +591,6 @@ function Library:Notify(text, duration)
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Notif
 
-    -- Fade in
     Notif.BackgroundTransparency = 1
     Label.TextTransparency = 1
 
@@ -589,7 +603,6 @@ function Library:Notify(text, duration)
 
         task.wait(duration)
 
-        -- Fade out
         for i = 1, 10 do
             Notif.BackgroundTransparency = i / 10
             Label.TextTransparency = i / 10
@@ -600,7 +613,10 @@ function Library:Notify(text, duration)
     end)
 end
 
+---------------------------------------------------------------------
 -- WATERMARK
+---------------------------------------------------------------------
+
 function Library:Watermark(text)
     if self._Watermark then
         self._Watermark.Text = text
@@ -609,7 +625,7 @@ function Library:Watermark(text)
 
     local Mark = Instance.new("TextLabel")
     Mark.Name = "Watermark"
-    Mark.Size = UDim2.new(0, 200, 0, 20)
+    Mark.Size = UDim2.new(0, 260, 0, 20)
     Mark.Position = UDim2.new(0, 10, 0, 10)
     Mark.BackgroundColor3 = self.Theme.Background
     Mark.BorderColor3 = self.Theme.Border
@@ -623,24 +639,30 @@ function Library:Watermark(text)
     self._Watermark = Mark
 end
 
+---------------------------------------------------------------------
 -- UI TOGGLE KEYBIND
-Library.ToggleKey = Enum.KeyCode.RightShift  -- default key
+---------------------------------------------------------------------
+
+Library.ToggleKey = Enum.KeyCode.RightShift
 
 function Library:SetToggleKey(keycode)
     self.ToggleKey = keycode
 end
 
 function Library:ToggleUI()
-    if not self._UIVisible then
-        self._UIVisible = true
-        ScreenGui.Enabled = true
-    else
-        self._UIVisible = false
-        ScreenGui.Enabled = false
-    end
+    self._UIVisible = not self._UIVisible
+    ScreenGui.Enabled = self._UIVisible
 end
 
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Library.ToggleKey then
+        Library:ToggleUI()
+    end
+end)
 
-
+---------------------------------------------------------------------
+-- RETURN LIBRARY
+---------------------------------------------------------------------
 
 return Library
