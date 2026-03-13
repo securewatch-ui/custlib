@@ -1,4 +1,4 @@
---// securewatch-ui Library (Modern, Fixed Dropdowns + Watermark + FPS smoothing)
+--// securewatch-ui Library (Fixed: dropdown collisions, bolder text, accurate FPS)
 local Library = {}
 
 ---------------------------------------------------------------------
@@ -89,6 +89,40 @@ ScreenGui.ResetOnSpawn = false
 SafeParentGui(ScreenGui)
 
 Library._UIVisible = true
+
+---------------------------------------------------------------------
+-- GLOBAL DROPDOWN TRACKER
+---------------------------------------------------------------------
+-- ensures only one dropdown list is open at a time
+Library._OpenDropdown = nil
+local function CloseOpenDropdown()
+    if Library._OpenDropdown and Library._OpenDropdown.ListFrame then
+        pcall(function() Library._OpenDropdown.ListFrame.Visible = false end)
+        pcall(function() Library._OpenDropdown.Arrow.Text = "▼" end)
+    end
+    Library._OpenDropdown = nil
+end
+
+-- close dropdowns when clicking outside
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mousePos = UserInputService:GetMouseLocation()
+        -- small delay to allow dropdown toggles to process first
+        task.defer(function()
+            if Library._OpenDropdown and Library._OpenDropdown.ListFrame then
+                local lf = Library._OpenDropdown.ListFrame
+                if not lf.Visible then return end
+                local pos = Vector2.new(lf.AbsolutePosition.X, lf.AbsolutePosition.Y)
+                local size = Vector2.new(lf.AbsoluteSize.X, lf.AbsoluteSize.Y)
+                local x, y = mousePos.X, mousePos.Y
+                if x < pos.X or x > pos.X + size.X or y < pos.Y or y > pos.Y + size.Y then
+                    CloseOpenDropdown()
+                end
+            end
+        end)
+    end
+end)
 
 ---------------------------------------------------------------------
 -- ELEMENT REGISTRATION FOR CONFIGS
@@ -457,11 +491,14 @@ function Library:CreateToggle(group, text, default, callback, parent)
     Label.Position = UDim2.new(0,26,0,0)
     Label.BackgroundTransparency = 1
     Label.Text = text
-    Label.Font = Enum.Font.Gotham
+    Label.Font = Enum.Font.GothamSemibold
     Label.TextSize = 14
     Label.TextColor3 = Library.Theme.Text
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Frame
+    -- subtle text stroke for clarity
+    Label.TextStrokeTransparency = 0.8
+    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
     local state = default or false
     local function Update()
@@ -501,11 +538,13 @@ function Library:CreateSlider(group, text, min, max, default, callback, parent)
     Label.Size = UDim2.new(1,0,0,18)
     Label.BackgroundTransparency = 1
     Label.Text = text .. " (" .. default .. ")"
-    Label.Font = Enum.Font.Gotham
+    Label.Font = Enum.Font.GothamSemibold
     Label.TextSize = 14
     Label.TextColor3 = Library.Theme.Text
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Frame
+    Label.TextStrokeTransparency = 0.85
+    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
     local Bar = Instance.new("Frame")
     Bar.Size = UDim2.new(1,0,0,8)
@@ -551,7 +590,7 @@ function Library:CreateSlider(group, text, min, max, default, callback, parent)
 end
 
 ---------------------------------------------------------------------
--- DROPDOWN (fixed: list parented to top-level GUI and positioned absolutely)
+-- DROPDOWN (fixed: absolute positioning, single-open behavior)
 ---------------------------------------------------------------------
 function Library:CreateDropdown(group, text, list, default, callback, parent)
     local Dropdown = {}
@@ -571,11 +610,13 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
     Label.Position = UDim2.new(0,6,0,0)
     Label.BackgroundTransparency = 1
     Label.Text = text .. ": " .. default
-    Label.Font = Enum.Font.Gotham
+    Label.Font = Enum.Font.GothamSemibold
     Label.TextSize = 14
     Label.TextColor3 = Library.Theme.Text
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Frame
+    Label.TextStrokeTransparency = 0.85
+    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
     local Arrow = Instance.new("TextLabel")
     Arrow.Size = UDim2.new(0,16,1,0)
@@ -590,17 +631,16 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
 
     local Open = false
 
-    -- ListFrame will be parented to top-level ScreenGui to avoid clipping
     local ListFrame = Instance.new("Frame")
     ListFrame.Size = UDim2.new(0, 0, 0, 0)
     ListFrame.Position = UDim2.new(0, 0, 0, 0)
     ListFrame.BackgroundColor3 = Library.Theme.Background
     ListFrame.BorderSizePixel = 0
     ListFrame.Visible = false
-    ListFrame.Parent = ScreenGui -- top-level
+    ListFrame.Parent = ScreenGui
     Round(ListFrame,6)
     Stroke(ListFrame, Library.Theme.Border,1)
-    ListFrame.ZIndex = 9999
+    ListFrame.ZIndex = 10001
 
     local Layout = Instance.new("UIListLayout")
     Layout.Parent = ListFrame
@@ -615,10 +655,12 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
             Option.Size = UDim2.new(1,0,0,24)
             Option.BackgroundTransparency = 1
             Option.Text = item
-            Option.Font = Enum.Font.Gotham
+            Option.Font = Enum.Font.GothamSemibold
             Option.TextSize = 14
             Option.TextColor3 = Library.Theme.Text
             Option.Parent = ListFrame
+            Option.TextStrokeTransparency = 0.9
+            Option.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
             Option.MouseEnter:Connect(function() Option.TextColor3 = Library.Theme.Accent end)
             Option.MouseLeave:Connect(function() Option.TextColor3 = Library.Theme.Text end)
@@ -627,6 +669,7 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
                 ListFrame.Visible = false
                 Open = false
                 Arrow.Text = "▼"
+                Library._OpenDropdown = nil
                 if callback then pcall(callback, item) end
             end)
         end
@@ -637,13 +680,17 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
     BuildList(list)
 
     local function OpenList()
+        CloseOpenDropdown()
         if not ListFrame then return end
         local absPos = Frame.AbsolutePosition
         local absSize = Frame.AbsoluteSize
+        local width = math.max(200, absSize.X)
+        local height = math.min(200, (#list * 24))
         ListFrame.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 4)
-        ListFrame.Size = UDim2.new(0, absSize.X, 0, math.min(200, (#list * 24)))
+        ListFrame.Size = UDim2.new(0, width, 0, height)
         ListFrame.Visible = true
-        ListFrame.ZIndex = 9999
+        ListFrame.ZIndex = 10001
+        Library._OpenDropdown = { ListFrame = ListFrame, Arrow = Arrow }
     end
 
     Frame.InputBegan:Connect(function(input)
@@ -656,6 +703,7 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
             else
                 ListFrame.Visible = false
                 Arrow.Text = "▼"
+                Library._OpenDropdown = nil
             end
         end
     end)
@@ -679,7 +727,7 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
 end
 
 ---------------------------------------------------------------------
--- SEARCHABLE DROPDOWN (same absolute positioning approach)
+-- SEARCHABLE DROPDOWN (absolute positioning + single-open)
 ---------------------------------------------------------------------
 function Library:CreateSearchDropdown(group, text, list, default, callback, parent)
     local Dropdown = {}
@@ -699,11 +747,13 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
     Label.Position = UDim2.new(0,6,0,0)
     Label.BackgroundTransparency = 1
     Label.Text = text .. ": " .. default
-    Label.Font = Enum.Font.Gotham
+    Label.Font = Enum.Font.GothamSemibold
     Label.TextSize = 14
     Label.TextColor3 = Library.Theme.Text
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Frame
+    Label.TextStrokeTransparency = 0.85
+    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
     local Arrow = Instance.new("TextLabel")
     Arrow.Size = UDim2.new(0,16,1,0)
@@ -726,7 +776,7 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
     ListFrame.Parent = ScreenGui
     Round(ListFrame,6)
     Stroke(ListFrame, Library.Theme.Border,1)
-    ListFrame.ZIndex = 9999
+    ListFrame.ZIndex = 10001
 
     local SearchBox = Instance.new("TextBox")
     SearchBox.Size = UDim2.new(1,-8,0,20)
@@ -763,10 +813,12 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
                 Option.Size = UDim2.new(1,0,0,22)
                 Option.BackgroundTransparency = 1
                 Option.Text = item
-                Option.Font = Enum.Font.Gotham
+                Option.Font = Enum.Font.GothamSemibold
                 Option.TextSize = 13
                 Option.TextColor3 = Library.Theme.Text
                 Option.Parent = Scroll
+                Option.TextStrokeTransparency = 0.9
+                Option.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
                 Option.MouseEnter:Connect(function() Option.TextColor3 = Library.Theme.Accent end)
                 Option.MouseLeave:Connect(function() Option.TextColor3 = Library.Theme.Text end)
@@ -775,6 +827,7 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
                     ListFrame.Visible = false
                     Open = false
                     Arrow.Text = "▼"
+                    Library._OpenDropdown = nil
                     if callback then pcall(callback, item) end
                 end)
             end
@@ -793,18 +846,20 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
     end)
 
     local function OpenList()
+        CloseOpenDropdown()
         local absPos = Frame.AbsolutePosition
         local absSize = Frame.AbsoluteSize
         ListFrame.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 4)
         ListFrame.Size = UDim2.new(0, absSize.X, 0, 180)
         ListFrame.Visible = true
-        ListFrame.ZIndex = 9999
+        ListFrame.ZIndex = 10001
+        Library._OpenDropdown = { ListFrame = ListFrame, Arrow = Arrow }
     end
 
     Frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             Open = not Open
-            if Open then OpenList(); Arrow.Text = "▲" else ListFrame.Visible = false; Arrow.Text = "▼" end
+            if Open then OpenList(); Arrow.Text = "▲" else ListFrame.Visible = false; Arrow.Text = "▼"; Library._OpenDropdown = nil end
         end
     end)
 
@@ -832,11 +887,13 @@ function Library:CreateKeybind(group, text, defaultKey, mode, callback, parent)
     Label.Size = UDim2.new(0.5,0,1,0)
     Label.BackgroundTransparency = 1
     Label.Text = text
-    Label.Font = Enum.Font.Gotham
+    Label.Font = Enum.Font.GothamSemibold
     Label.TextSize = 14
     Label.TextColor3 = Library.Theme.Text
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Frame
+    Label.TextStrokeTransparency = 0.85
+    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
     local Button = Instance.new("TextButton")
     Button.Size = UDim2.new(0.5,-4,1,0)
@@ -888,7 +945,7 @@ function Library:CreateButton(group, text, callback, parent)
     Button.BackgroundColor3 = Library.Theme.BackgroundAlt
     Button.BorderSizePixel = 0
     Button.Text = text
-    Button.Font = Enum.Font.Gotham
+    Button.Font = Enum.Font.GothamSemibold
     Button.TextSize = 14
     Button.TextColor3 = Library.Theme.Text
     Button.Parent = parent
@@ -915,11 +972,13 @@ function Library:CreateColorPicker(group, text, default, callback, parent)
     Label.Size = UDim2.new(0.5,0,1,0)
     Label.BackgroundTransparency = 1
     Label.Text = text
-    Label.Font = Enum.Font.Gotham
+    Label.Font = Enum.Font.GothamSemibold
     Label.TextSize = 14
     Label.TextColor3 = Library.Theme.Text
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Frame
+    Label.TextStrokeTransparency = 0.85
+    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
     local Button = Instance.new("TextButton")
     Button.Size = UDim2.new(0.5,-4,1,0)
@@ -975,11 +1034,13 @@ function Library:Notify(text, duration)
     Label.Position = UDim2.new(0,6,0,0)
     Label.BackgroundTransparency = 1
     Label.Text = text
-    Label.Font = Enum.Font.Gotham
+    Label.Font = Enum.Font.GothamSemibold
     Label.TextSize = 14
     Label.TextColor3 = self.Theme.Text
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Notif
+    Label.TextStrokeTransparency = 0.85
+    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
     table.insert(self._Notifications, Notif)
     Notif.BackgroundTransparency = 1
@@ -1004,7 +1065,7 @@ function Library:Notify(text, duration)
 end
 
 ---------------------------------------------------------------------
--- WATERMARK (robust, pastel-pink style, draggable, FPS smoothing)
+-- WATERMARK (pastel-pink, draggable, accurate FPS via frame counting)
 ---------------------------------------------------------------------
 function Library:Watermark(textBase, opts)
     if self._Watermark then
@@ -1015,7 +1076,7 @@ function Library:Watermark(textBase, opts)
     opts = opts or {}
     local bgColor = opts.bgColor or self.Theme.Accent
     local textColor = opts.textColor or Color3.fromRGB(255,255,255)
-    local sizeX = opts.width or 300
+    local sizeX = opts.width or 320
 
     local MarkGui = Instance.new("ScreenGui")
     MarkGui.Name = "securewatchWatermark"
@@ -1031,7 +1092,7 @@ function Library:Watermark(textBase, opts)
     Mark.Parent = MarkGui
     Round(Mark, 8)
     Stroke(Mark, self.Theme.Border, 1)
-    Mark.ZIndex = 10000
+    Mark.ZIndex = 10002
 
     local Label = Instance.new("TextLabel")
     Label.Size = UDim2.new(1, -12, 1, 0)
@@ -1043,9 +1104,8 @@ function Library:Watermark(textBase, opts)
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Text = textBase or "kittyware.cc"
     Label.Parent = Mark
-
-    -- small subtle shadow via UIStroke on label background
-    pcall(function() Mark.UIStroke.Thickness = 0.8 end)
+    Label.TextStrokeTransparency = 0.8
+    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
     self._Watermark = Mark
     self._WatermarkBase = textBase or "kittyware.cc"
@@ -1071,19 +1131,21 @@ function Library:Watermark(textBase, opts)
         end)
     end
 
-    -- FPS smoothing: moving average of last N frames
-    local frameTimes = {}
-    local maxSamples = 10
+    -- accurate FPS: count frames over a short interval
+    local frameCount = 0
+    local sampleInterval = 0.5
+    local elapsed = 0
     RunService.RenderStepped:Connect(function(dt)
-        table.insert(frameTimes, dt)
-        if #frameTimes > maxSamples then table.remove(frameTimes, 1) end
-        local sum = 0
-        for _, t in ipairs(frameTimes) do sum = sum + t end
-        local avg = sum / #frameTimes
-        local fps = math.floor(1 / math.max(0.0001, avg) + 0.5)
-        local ping = SafePing()
-        local base = self._WatermarkBase or "kittyware.cc"
-        pcall(function() Label.Text = string.format("%s  •  %d FPS  •  %d ms", base, fps, ping) end)
+        frameCount = frameCount + 1
+        elapsed = elapsed + dt
+        if elapsed >= sampleInterval then
+            local fps = math.floor(frameCount / elapsed + 0.5)
+            frameCount = 0
+            elapsed = 0
+            local ping = SafePing()
+            local base = self._WatermarkBase or "kittyware.cc"
+            pcall(function() Label.Text = string.format("%s  •  %d FPS  •  %d ms", base, fps, ping) end)
+        end
     end)
 end
 
@@ -1106,7 +1168,7 @@ function Library:ToggleUI() self._UIVisible = not self._UIVisible; ScreenGui.Ena
 UserInputService.InputBegan:Connect(function(input, gp) if gp then return end; if input.KeyCode == Library.ToggleKey then Library:ToggleUI() end end)
 
 ---------------------------------------------------------------------
--- CONFIG TAB HELPER (dynamic dropdown, safe)
+-- CONFIG TAB HELPER
 ---------------------------------------------------------------------
 function Library:AttachConfigTab(Window, tabName)
     local Tab = Window:Tab(tabName or "Configs")
