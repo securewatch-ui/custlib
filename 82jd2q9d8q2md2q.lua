@@ -1,4 +1,8 @@
---// securewatch-ui Library (Modern, Full-Featured)
+--// securewatch-ui Library (Modern, Fixed: Configs + Watermark + Extras)
+-- Full single-file library with fixes for config dropdown nil errors,
+-- watermark visibility fallback to PlayerGui, dynamic config dropdown,
+-- notification queue, blur, theme switcher, color picker, searchable dropdown,
+-- drag + resize, and AttachConfigTab improvements.
 
 local Library = {}
 
@@ -6,10 +10,13 @@ local Library = {}
 -- SERVICES
 ---------------------------------------------------------------------
 
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Stats = game:GetService("Stats")
+local Lighting = game:GetService("Lighting")
 
 ---------------------------------------------------------------------
 -- THEMES
@@ -58,6 +65,34 @@ local function Stroke(obj, color, thickness)
     return s
 end
 
+local function SafeParentGui(gui)
+    -- Try PlayerGui first (more compatible), fallback to CoreGui
+    local pg = (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")) or nil
+    if pg then
+        gui.Parent = pg
+    else
+        gui.Parent = CoreGui
+    end
+    -- Ensure it's on top
+    if gui:IsA("ScreenGui") then
+        pcall(function() gui.DisplayOrder = 9999 end)
+    end
+end
+
+local function SafePing()
+    local ok, val = pcall(function()
+        local item = Stats.Network and Stats.Network.ServerStatsItem and Stats.Network.ServerStatsItem["Data Ping"]
+        if item then
+            return math.floor(item:GetValue())
+        end
+        return 0
+    end)
+    if ok and val then
+        return val
+    end
+    return 0
+end
+
 ---------------------------------------------------------------------
 -- MAIN SCREEN GUI
 ---------------------------------------------------------------------
@@ -65,7 +100,7 @@ end
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "securewatchUILib"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = CoreGui
+SafeParentGui(ScreenGui)
 
 Library._UIVisible = true
 
@@ -100,7 +135,10 @@ function Library:GetConfigs()
     local configs = {}
     for _, f in ipairs(files) do
         if f:sub(-4) == ".txt" then
-            table.insert(configs, f:match("([^/]+)%.txt$"))
+            local name = f:match("([^/\\]+)%.txt$")
+            if name then
+                table.insert(configs, name)
+            end
         end
     end
     table.sort(configs)
@@ -114,7 +152,8 @@ function Library:SaveConfig(name)
     local lines = {}
 
     for key, element in pairs(Library.Elements) do
-        local value = element.get()
+        local ok, value = pcall(function() return element.get() end)
+        if not ok then value = nil end
 
         if typeof(value) == "boolean" then
             table.insert(lines, key .. " = " .. tostring(value))
@@ -148,17 +187,17 @@ function Library:LoadConfig(name)
             local element = Library.Elements[key]
             if element then
                 if element.type == "toggle" then
-                    element.set(value == "true")
+                    pcall(function() element.set(value == "true") end)
                 elseif element.type == "slider" then
-                    element.set(tonumber(value))
+                    pcall(function() element.set(tonumber(value)) end)
                 elseif element.type == "dropdown" or element.type == "searchdropdown" then
-                    element.set(value)
+                    pcall(function() element.set(value) end)
                 elseif element.type == "keybind" then
-                    element.set(value)
+                    pcall(function() element.set(value) end)
                 elseif element.type == "colorpicker" then
                     local r, g, b = value:match("(%d+),(%d+),(%d+)")
                     if r and g and b then
-                        element.set(Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b)))
+                        pcall(function() element.set(Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b))) end)
                     end
                 end
             end
@@ -179,7 +218,7 @@ function Library:SetBlur(enabled)
         if not blurEffect then
             blurEffect = Instance.new("BlurEffect")
             blurEffect.Size = 12
-            blurEffect.Parent = game:GetService("Lighting")
+            blurEffect.Parent = Lighting
         end
     else
         if blurEffect then
@@ -526,12 +565,14 @@ function Library:CreateToggle(group, text, default, callback, parent)
     local function Update()
         if state then
             Box.BackgroundColor3 = Library.Theme.Accent
+            if not Box:FindFirstChildOfClass("UIStroke") then Stroke(Box, Library.Theme.AccentDark, 1) end
             Box.UIStroke.Color = Library.Theme.AccentDark
         else
             Box.BackgroundColor3 = Library.Theme.BackgroundAlt
+            if not Box:FindFirstChildOfClass("UIStroke") then Stroke(Box, Library.Theme.Border, 1) end
             Box.UIStroke.Color = Library.Theme.Border
         end
-        if callback then callback(state) end
+        if callback then pcall(callback, state) end
     end
 
     Button.MouseButton1Click:Connect(function()
@@ -611,7 +652,7 @@ function Library:CreateSlider(group, text, min, max, default, callback, parent)
         value = math.floor(min + (max - min) * rel + 0.5)
         Fill.Size = UDim2.new(rel, 0, 1, 0)
         Label.Text = text .. " (" .. value .. ")"
-        if callback then callback(value) end
+        if callback then pcall(callback, value) end
     end
 
     Bar.InputBegan:Connect(function(input)
@@ -652,11 +693,14 @@ function Library:CreateSlider(group, text, min, max, default, callback, parent)
 end
 
 ---------------------------------------------------------------------
--- DROPDOWN
+-- DROPDOWN (dynamic list support)
 ---------------------------------------------------------------------
 
 function Library:CreateDropdown(group, text, list, default, callback, parent)
     local Dropdown = {}
+
+    list = list or {}
+    default = default or (list[1] or "None")
 
     local Frame = Instance.new("Frame")
     Frame.Size = UDim2.new(1, -10, 0, 28)
@@ -670,7 +714,7 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
     Label.Size = UDim2.new(1, -10, 1, 0)
     Label.Position = UDim2.new(0, 6, 0, 0)
     Label.BackgroundTransparency = 1
-    Label.Text = text .. ": " .. (default or list[1])
+    Label.Text = text .. ": " .. default
     Label.Font = Enum.Font.Gotham
     Label.TextSize = 14
     Label.TextColor3 = Library.Theme.Text
@@ -691,7 +735,7 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
     local Open = false
 
     local ListFrame = Instance.new("Frame")
-    ListFrame.Size = UDim2.new(1, 0, 0, #list * 24)
+    ListFrame.Size = UDim2.new(1, 0, 0, 0)
     ListFrame.Position = UDim2.new(0, 0, 1, 4)
     ListFrame.BackgroundColor3 = Library.Theme.Background
     ListFrame.BorderSizePixel = 0
@@ -703,32 +747,48 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
     local Layout = Instance.new("UIListLayout")
     Layout.Parent = ListFrame
 
-    for _, item in ipairs(list) do
-        local Option = Instance.new("TextButton")
-        Option.Size = UDim2.new(1, 0, 0, 24)
-        Option.BackgroundTransparency = 1
-        Option.Text = item
-        Option.Font = Enum.Font.Gotham
-        Option.TextSize = 14
-        Option.TextColor3 = Library.Theme.Text
-        Option.Parent = ListFrame
+    local function BuildList(newList)
+        newList = newList or {}
+        -- clear
+        for _, child in ipairs(ListFrame:GetChildren()) do
+            if child:IsA("TextButton") or child:IsA("TextLabel") then
+                child:Destroy()
+            end
+        end
 
-        Option.MouseEnter:Connect(function()
-            Option.TextColor3 = Library.Theme.Accent
-        end)
-
-        Option.MouseLeave:Connect(function()
+        for _, item in ipairs(newList) do
+            local Option = Instance.new("TextButton")
+            Option.Size = UDim2.new(1, 0, 0, 24)
+            Option.BackgroundTransparency = 1
+            Option.Text = item
+            Option.Font = Enum.Font.Gotham
+            Option.TextSize = 14
             Option.TextColor3 = Library.Theme.Text
-        end)
+            Option.Parent = ListFrame
 
-        Option.MouseButton1Click:Connect(function()
-            Label.Text = text .. ": " .. item
-            ListFrame.Visible = false
-            Open = false
-            Arrow.Text = "▼"
-            if callback then callback(item) end
-        end)
+            Option.MouseEnter:Connect(function()
+                Option.TextColor3 = Library.Theme.Accent
+            end)
+
+            Option.MouseLeave:Connect(function()
+                Option.TextColor3 = Library.Theme.Text
+            end)
+
+            Option.MouseButton1Click:Connect(function()
+                Label.Text = text .. ": " .. item
+                ListFrame.Visible = false
+                Open = false
+                Arrow.Text = "▼"
+                if callback then pcall(callback, item) end
+            end)
+        end
+
+        -- adjust size
+        local total = #newList * 24
+        ListFrame.Size = UDim2.new(1, 0, 0, total)
     end
+
+    BuildList(list)
 
     Frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -739,11 +799,22 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
     end)
 
     Dropdown.set = function(val)
+        if val == nil then val = "None" end
         Label.Text = text .. ": " .. val
     end
 
     Dropdown.get = function()
         return Label.Text:sub(#text + 3)
+    end
+
+    Dropdown.setList = function(newList)
+        list = newList or {}
+        if #list == 0 then
+            Dropdown.set("None")
+        else
+            Dropdown.set(list[1])
+        end
+        BuildList(list)
     end
 
     Dropdown.type = "dropdown"
@@ -760,6 +831,9 @@ end
 function Library:CreateSearchDropdown(group, text, list, default, callback, parent)
     local Dropdown = {}
 
+    list = list or {}
+    default = default or (list[1] or "None")
+
     local Frame = Instance.new("Frame")
     Frame.Size = UDim2.new(1, -10, 0, 28)
     Frame.BackgroundColor3 = Library.Theme.BackgroundAlt
@@ -772,7 +846,7 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
     Label.Size = UDim2.new(1, -10, 1, 0)
     Label.Position = UDim2.new(0, 6, 0, 0)
     Label.BackgroundTransparency = 1
-    Label.Text = text .. ": " .. (default or list[1])
+    Label.Text = text .. ": " .. default
     Label.Font = Enum.Font.Gotham
     Label.TextSize = 14
     Label.TextColor3 = Library.Theme.Text
@@ -860,7 +934,7 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
                     ListFrame.Visible = false
                     Open = false
                     Arrow.Text = "▼"
-                    if callback then callback(item) end
+                    if callback then pcall(callback, item) end
                 end)
             end
         end
@@ -887,11 +961,22 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
     end)
 
     Dropdown.set = function(val)
+        if val == nil then val = "None" end
         Label.Text = text .. ": " .. val
     end
 
     Dropdown.get = function()
         return Label.Text:sub(#text + 3)
+    end
+
+    Dropdown.setList = function(newList)
+        list = newList or {}
+        if #list == 0 then
+            Dropdown.set("None")
+        else
+            Dropdown.set(list[1])
+        end
+        Refresh()
     end
 
     Dropdown.type = "searchdropdown"
@@ -966,7 +1051,7 @@ function Library:CreateKeybind(group, text, defaultKey, mode, callback, parent)
             end
         else
             if input.KeyCode == currentKey then
-                if callback then callback() end
+                if callback then pcall(callback) end
             end
         end
     end)
@@ -1013,7 +1098,7 @@ function Library:CreateButton(group, text, callback, parent)
     end)
 
     Button.MouseButton1Click:Connect(function()
-        if callback then callback() end
+        if callback then pcall(callback) end
     end)
 
     return Button
@@ -1071,13 +1156,13 @@ function Library:CreateColorPicker(group, text, default, callback, parent)
         idx = idx % #colors + 1
         value = colors[idx]
         Button.BackgroundColor3 = value
-        if callback then callback(value) end
+        if callback then pcall(callback, value) end
     end)
 
     Picker.set = function(val)
         value = val
         Button.BackgroundColor3 = val
-        if callback then callback(val) end
+        if callback then pcall(callback, val) end
     end
 
     Picker.get = function()
@@ -1161,19 +1246,20 @@ function Library:Notify(text, duration)
 end
 
 ---------------------------------------------------------------------
--- WATERMARK (FPS + PING, SEPARATE GUI)
+-- WATERMARK (FPS + PING, robust + always visible)
 ---------------------------------------------------------------------
 
 function Library:Watermark(textBase)
     if self._Watermark then
-        self._WatermarkBase = textBase
+        self._WatermarkBase = textBase or self._WatermarkBase
         return
     end
 
     local MarkGui = Instance.new("ScreenGui")
     MarkGui.Name = "securewatchWatermark"
     MarkGui.ResetOnSpawn = false
-    MarkGui.Parent = CoreGui
+    -- prefer PlayerGui, fallback to CoreGui
+    SafeParentGui(MarkGui)
 
     local Mark = Instance.new("TextLabel")
     Mark.Name = "Watermark"
@@ -1190,17 +1276,26 @@ function Library:Watermark(textBase)
     Round(Mark, 6)
     Stroke(Mark, self.Theme.Border, 1)
 
+    -- ensure topmost
+    pcall(function() Mark.ZIndex = 9999 end)
+
     self._Watermark = Mark
     self._WatermarkBase = textBase or "kittyware.cc"
 
-    local lastUpdate = 0
+    local accum = 0
+    local last = tick()
     RunService.RenderStepped:Connect(function(dt)
-        lastUpdate = lastUpdate + dt
-        if lastUpdate >= 0.25 then
-            lastUpdate = 0
-            local fps = math.floor(1 / dt + 0.5)
-            local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-            Mark.Text = string.format("%s | %d FPS | %d ms", self._WatermarkBase, fps, ping)
+        accum = accum + dt
+        if accum >= 0.25 then
+            accum = 0
+            local now = tick()
+            local fps = math.floor(1 / math.max(0.0001, now - last) + 0.5)
+            last = now
+            local ping = SafePing()
+            local base = self._WatermarkBase or "kittyware.cc"
+            pcall(function()
+                Mark.Text = string.format("%s | %d FPS | %d ms", base, fps, ping)
+            end)
         end
     end)
 end
@@ -1213,7 +1308,8 @@ function Library:SetTheme(name)
     local theme = self.Themes[name]
     if not theme then return end
     self.Theme = theme
-    -- full live re-theming would require iterating all instances; for now, set before building UI
+    -- Note: live re-theming of existing UI would require iterating instances.
+    -- For simplicity, recommend rebuilding UI after theme change.
 end
 
 ---------------------------------------------------------------------
@@ -1239,7 +1335,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 ---------------------------------------------------------------------
--- CONFIG TAB HELPER
+-- CONFIG TAB HELPER (fixed + dynamic dropdown)
 ---------------------------------------------------------------------
 
 function Library:AttachConfigTab(Window, tabName)
@@ -1248,27 +1344,40 @@ function Library:AttachConfigTab(Window, tabName)
 
     local currentConfig = nil
 
-    local ConfigDropdown = Box:Dropdown("Config", self:GetConfigs(), nil, function(v)
+    local configs = self:GetConfigs()
+    local ConfigDropdown = Box:Dropdown("Config", configs, (configs[1] or "None"), function(v)
         currentConfig = v
     end)
 
+    -- ensure dropdown has dynamic list setter
+    if ConfigDropdown and ConfigDropdown.setList then
+        ConfigDropdown.setList(configs)
+    end
+
     Box:Button("Refresh", function()
-        local configs = self:GetConfigs()
-        if #configs == 0 then
+        local newConfigs = self:GetConfigs()
+        if #newConfigs == 0 then
             self:Notify("No configs found.", 2)
+            ConfigDropdown.setList({})
+            currentConfig = nil
+            ConfigDropdown.set("None")
+            return
         end
-        ConfigDropdown.set(#configs > 0 and configs[1] or "None")
+        ConfigDropdown.setList(newConfigs)
+        currentConfig = newConfigs[1]
+        ConfigDropdown.set(currentConfig)
+        self:Notify("Configs refreshed.", 2)
     end)
 
     Box:Button("Save", function()
-        if not currentConfig then
+        if not currentConfig or currentConfig == "None" then
             currentConfig = "default"
         end
         self:SaveConfig(currentConfig)
     end)
 
     Box:Button("Load", function()
-        if currentConfig then
+        if currentConfig and currentConfig ~= "None" then
             self:LoadConfig(currentConfig)
         else
             self:Notify("Select a config first.", 2)
@@ -1279,11 +1388,15 @@ function Library:AttachConfigTab(Window, tabName)
 
     ThemeBox:Dropdown("Theme", {"Pastel", "Dark"}, "Pastel", function(v)
         self:SetTheme(v)
-        self:Notify("Theme will apply on next UI build.", 3)
+        self:Notify("Theme changed. Rebuild UI to apply fully.", 3)
     end)
 
     ThemeBox:Toggle("Blur Background", false, function(v)
         self:SetBlur(v)
+    end)
+
+    ThemeBox:Button("Open Config Folder", function()
+        self:Notify("Config folder: securewatch-ui/configs", 3)
     end)
 end
 
