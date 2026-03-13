@@ -1,10 +1,12 @@
--- extlover UI Library (clean, pink theme, persistent watermark, full features)
+-- extlover UI Library (full rebuild)
 -- File: 82jd2q9d8q2md2q.lua
+-- Single-file, self-contained, user-friendly, pink theme, persistent watermark, Save As required,
+-- function import API, dropdown fixes, debug mode.
 
 local Library = {}
 
 ---------------------------------------------------------------------
--- SERVICES
+-- Services
 ---------------------------------------------------------------------
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -15,7 +17,16 @@ local Lighting = game:GetService("Lighting")
 local Stats = game:GetService("Stats")
 
 ---------------------------------------------------------------------
--- THEME (pastel pink primary)
+-- Config
+---------------------------------------------------------------------
+Library.Name = "extlover<3"
+Library.ConfigFolder = "extlover/configs"
+Library.ToggleKey = Enum.KeyCode.RightShift
+Library.Debug = false -- set true to print debug logs
+Library.ThemeName = "Pink"
+
+---------------------------------------------------------------------
+-- Themes (pink default)
 ---------------------------------------------------------------------
 Library.Themes = {
     Pink = {
@@ -38,11 +49,17 @@ Library.Themes = {
         TextDim        = Color3.fromRGB(170, 170, 190)
     }
 }
-Library.Theme = Library.Themes.Pink
+Library.Theme = Library.Themes[Library.ThemeName]
 
 ---------------------------------------------------------------------
--- HELPERS
+-- Utilities
 ---------------------------------------------------------------------
+local function dbg(...)
+    if Library.Debug then
+        print("[extlover-debug]", ...)
+    end
+end
+
 local function Round(obj, radius)
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, radius or 8)
@@ -62,7 +79,7 @@ end
 local function SafeParentGui(gui)
     local pg = (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")) or nil
     if pg then gui.Parent = pg else gui.Parent = CoreGui end
-    if gui:IsA("ScreenGui") then pcall(function() gui.DisplayOrder = 10090 end) end
+    if gui:IsA("ScreenGui") then pcall(function() gui.DisplayOrder = 10095 end) end
 end
 
 local function SafePing()
@@ -80,8 +97,22 @@ local function setClipboardSafe(text)
     return ok, err
 end
 
+local function EnsureFolder()
+    if not isfolder("extlover") then
+        pcall(function() makefolder("extlover") end)
+    end
+    if not isfolder(Library.ConfigFolder) then
+        pcall(function() makefolder(Library.ConfigFolder) end)
+    end
+end
+
+local function trim(s)
+    s = tostring(s or "")
+    return s:match("^%s*(.-)%s*$") or ""
+end
+
 ---------------------------------------------------------------------
--- CORE GUI
+-- Core GUI + State
 ---------------------------------------------------------------------
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "extloverUILib"
@@ -95,22 +126,16 @@ Library._Notifications = {}
 Library._OpenDropdown = nil
 Library._Watermark = nil
 Library._BlurEnabled = false
-Library.ConfigFolder = "extlover/configs"
-Library.ToggleKey = Enum.KeyCode.RightShift
 Library._Functions = {}
 
 local function RegisterElement(group, name, element)
     Library.Elements[group .. "." .. name] = element
+    dbg("Registered element", group .. "." .. name)
 end
 
 ---------------------------------------------------------------------
--- CONFIG I/O (Save As required)
+-- Config I/O
 ---------------------------------------------------------------------
-local function EnsureFolder()
-    if not isfolder("extlover") then makefolder("extlover") end
-    if not isfolder(Library.ConfigFolder) then makefolder(Library.ConfigFolder) end
-end
-
 function Library:GetConfigs()
     EnsureFolder()
     local files = listfiles(Library.ConfigFolder)
@@ -126,12 +151,13 @@ function Library:GetConfigs()
 end
 
 function Library:SaveConfig(name)
-    if not name or tostring(name):match("^%s*$") then
+    name = trim(name)
+    if name == "" then
         self:Notify("Invalid config name.", 2)
-        return
+        return false, "invalid name"
     end
     EnsureFolder()
-    local path = self.ConfigFolder .. "/" .. tostring(name) .. ".txt"
+    local path = self.ConfigFolder .. "/" .. name .. ".txt"
     local lines = {}
     for key, element in pairs(self.Elements) do
         local ok, value = pcall(function() return element.get() end)
@@ -147,20 +173,28 @@ function Library:SaveConfig(name)
             table.insert(lines, key .. " = " .. r .. "," .. g .. "," .. b)
         end
     end
-    writefile(path, table.concat(lines, "\n"))
+    local ok, err = pcall(function() writefile(path, table.concat(lines, "\n")) end)
+    if not ok then
+        self:Notify("Failed to save config: " .. tostring(err), 4)
+        warn("[extlover] SaveConfig writefile failed:", err, "path:", path)
+        return false, err
+    end
     self:Notify("Saved config: " .. tostring(name), 3)
+    dbg("Saved config", name, "->", path)
+    return true
 end
 
 function Library:LoadConfig(name)
-    if not name or tostring(name):match("^%s*$") then
+    name = trim(name)
+    if name == "" then
         self:Notify("Invalid config name.", 2)
-        return
+        return false, "invalid name"
     end
     EnsureFolder()
-    local path = self.ConfigFolder .. "/" .. tostring(name) .. ".txt"
+    local path = self.ConfigFolder .. "/" .. name .. ".txt"
     if not isfile(path) then
         self:Notify("Config not found: " .. tostring(name), 3)
-        return
+        return false, "not found"
     end
     local data = readfile(path)
     for line in data:gmatch("[^\r\n]+") do
@@ -180,10 +214,12 @@ function Library:LoadConfig(name)
         end
     end
     self:Notify("Loaded config: " .. tostring(name), 3)
+    dbg("Loaded config", name, "from", path)
+    return true
 end
 
 ---------------------------------------------------------------------
--- BLUR (only when UI visible)
+-- Blur
 ---------------------------------------------------------------------
 local blurEffect
 function Library:SetBlur(enabled)
@@ -201,7 +237,247 @@ function Library:SetBlur(enabled)
 end
 
 ---------------------------------------------------------------------
--- WINDOW / TABS / GROUPBOX
+-- Notifications & Info
+---------------------------------------------------------------------
+function Library:Notify(text, duration)
+    duration = duration or 3
+    local Notif = Instance.new("Frame")
+    Notif.Name = "Notification"
+    Notif.Size = UDim2.new(0, 360, 0, 56)
+    Notif.Position = UDim2.new(1, -380, 0, 12 + (#self._Notifications * 64))
+    Notif.BackgroundColor3 = self.Theme.Background
+    Notif.BorderSizePixel = 0
+    Notif.Parent = ScreenGui
+    Round(Notif, 10)
+    Stroke(Notif, self.Theme.Border, 1)
+    Notif.ZIndex = 10080
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -20, 1, -12)
+    Label.Position = UDim2.new(0, 10, 0, 6)
+    Label.BackgroundTransparency = 1
+    Label.Text = tostring(text or "")
+    Label.Font = Enum.Font.GothamSemibold
+    Label.TextSize = 13
+    Label.TextColor3 = self.Theme.Text
+    Label.TextWrapped = true
+    Label.TextYAlignment = Enum.TextYAlignment.Top
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Notif
+    Label.TextStrokeTransparency = 0.85
+    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+
+    table.insert(self._Notifications, Notif)
+    Notif.BackgroundTransparency = 1
+    Label.TextTransparency = 1
+
+    task.spawn(function()
+        for i = 1, 10 do
+            Notif.BackgroundTransparency = 1 - (i / 10)
+            Label.TextTransparency = 1 - (i / 10)
+            task.wait(0.02)
+        end
+
+        task.wait(duration)
+
+        for i = 1, 10 do
+            Notif.BackgroundTransparency = i / 10
+            Label.TextTransparency = i / 10
+            task.wait(0.02)
+        end
+
+        local idx
+        for i, v in ipairs(self._Notifications) do
+            if v == Notif then idx = i; break end
+        end
+        if idx then
+            table.remove(self._Notifications, idx)
+            for i = idx, #self._Notifications do
+                local n = self._Notifications[i]
+                n:TweenPosition(UDim2.new(1, -380, 0, 12 + (i - 1) * 64), "Out", "Quad", 0.18, true)
+            end
+        end
+
+        Notif:Destroy()
+    end)
+end
+
+function Library:ShowInfoInline(titleText, bodyText, duration)
+    duration = duration or 4
+    local container = Instance.new("Frame")
+    container.Name = "ExtloverInfoInline"
+    container.Size = UDim2.new(0, 420, 0, 96)
+    container.Position = UDim2.new(0.5, -210, 0.12, 0)
+    container.BackgroundColor3 = self.Theme.Background
+    container.BorderSizePixel = 0
+    container.Parent = ScreenGui
+    Round(container, 10)
+    Stroke(container, self.Theme.Border, 1)
+    container.ZIndex = 10085
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -24, 0, 24)
+    title.Position = UDim2.new(0, 12, 0, 8)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamSemibold
+    title.TextSize = 16
+    title.TextColor3 = self.Theme.Text
+    title.Text = titleText or ""
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = container
+
+    local body = Instance.new("TextLabel")
+    body.Size = UDim2.new(1, -24, 1, -44)
+    body.Position = UDim2.new(0, 12, 0, 36)
+    body.BackgroundTransparency = 1
+    body.Font = Enum.Font.Gotham
+    body.TextSize = 14
+    body.TextColor3 = self.Theme.Text
+    body.TextWrapped = true
+    body.TextYAlignment = Enum.TextYAlignment.Top
+    body.Text = bodyText or ""
+    body.Parent = container
+
+    task.spawn(function()
+        task.wait(duration)
+        pcall(function() container:Destroy() end)
+    end)
+
+    return container
+end
+
+---------------------------------------------------------------------
+-- Watermark (persistent pill with hover tooltip)
+---------------------------------------------------------------------
+function Library:Watermark(opts)
+    if self._Watermark and self._Watermark.Parent then return self._Watermark end
+    opts = opts or {}
+    local bgColor = opts.bgColor or self.Theme.Accent
+    local size = opts.size or 18
+
+    local MarkGui = Instance.new("ScreenGui")
+    MarkGui.Name = "extloverWatermark"
+    MarkGui.ResetOnSpawn = false
+    local pg = (Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui"))
+    MarkGui.Parent = pg or CoreGui
+    pcall(function() MarkGui.DisplayOrder = 10095 end)
+
+    local Mark = Instance.new("Frame")
+    Mark.Name = "Watermark"
+    Mark.Size = UDim2.new(0, size, 0, size)
+    Mark.Position = UDim2.new(0, 12, 0, 12)
+    Mark.BackgroundColor3 = bgColor
+    Mark.BorderSizePixel = 0
+    Mark.Parent = MarkGui
+    Round(Mark, size/2)
+    Stroke(Mark, self.Theme.Border, 0.6)
+    Mark.ZIndex = 10095
+
+    local tip = Instance.new("TextLabel")
+    tip.Size = UDim2.new(0, 140, 0, 20)
+    tip.Position = UDim2.new(0, size + 12, 0, 0)
+    tip.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    tip.BackgroundTransparency = 0.12
+    tip.TextColor3 = Color3.fromRGB(255,255,255)
+    tip.Font = Enum.Font.Gotham
+    tip.TextSize = 12
+    tip.Text = ""
+    tip.Visible = false
+    tip.Parent = Mark
+    Round(tip, 6)
+    Stroke(tip, Color3.fromRGB(0,0,0), 0.6)
+    tip.ZIndex = 10096
+
+    local updating = false
+    local function updateTip()
+        if updating then return end
+        updating = true
+        task.spawn(function()
+            while tip and tip.Parent and tip.Visible do
+                local fps = math.floor(1 / math.max(1/60, RunService.RenderStepped:Wait()) + 0.5)
+                local ping = SafePing()
+                tip.Text = ("FPS: %d  Ping: %dms"):format(fps, ping)
+                task.wait(0.25)
+            end
+            updating = false
+        end)
+    end
+
+    do
+        local dragging, dragStart, startPos = false, nil, nil
+        Mark.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = Mark.Position
+            end
+        end)
+        Mark.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = input.Position - dragStart
+                Mark.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+
+        Mark.MouseEnter:Connect(function()
+            tip.Visible = true
+            updateTip()
+        end)
+        Mark.MouseLeave:Connect(function()
+            tip.Visible = false
+        end)
+    end
+
+    self._Watermark = Mark
+    return Mark
+end
+
+-- create watermark immediately
+pcall(function() Library:Watermark() end)
+
+---------------------------------------------------------------------
+-- Function import / registration API
+---------------------------------------------------------------------
+function Library:RegisterFunction(name, fn)
+    if type(name) ~= "string" or type(fn) ~= "function" then
+        error("RegisterFunction expects (string, function)")
+    end
+    self._Functions[name] = fn
+    dbg("Registered function", name)
+end
+
+function Library:ImportFunctions(tbl, prefix)
+    prefix = prefix or ""
+    if type(tbl) ~= "table" then return end
+    for k, v in pairs(tbl) do
+        if type(k) == "string" and type(v) == "function" then
+            local name = prefix .. k
+            self._Functions[name] = v
+            dbg("Imported function", name)
+        end
+    end
+end
+
+function Library:CallFunction(name, ...)
+    local fn = self._Functions[name]
+    if type(fn) ~= "function" then
+        error("Function not found: " .. tostring(name))
+    end
+    return pcall(fn, ...)
+end
+
+function Library:ListFunctions()
+    local out = {}
+    for k, v in pairs(self._Functions) do table.insert(out, k) end
+    table.sort(out)
+    return out
+end
+
+---------------------------------------------------------------------
+-- UI primitives: Window, Tabs, Groupbox, Elements
 ---------------------------------------------------------------------
 function Library:Window(title)
     local Window = {}
@@ -230,7 +506,7 @@ function Library:Window(title)
     TitleLabel.Size = UDim2.new(1, -12, 1, 0)
     TitleLabel.Position = UDim2.new(0, 12, 0, 0)
     TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Text = (title or "extlover<3")
+    TitleLabel.Text = (title or Library.Name)
     TitleLabel.Font = Enum.Font.GothamSemibold
     TitleLabel.TextSize = 18
     TitleLabel.TextColor3 = self.Theme.Text
@@ -390,9 +666,6 @@ function Library:Window(title)
     return Window
 end
 
----------------------------------------------------------------------
--- GROUPBOX + ELEMENTS (full implementations)
----------------------------------------------------------------------
 function Library:CreateGroupbox(name, parent)
     local Box = {}
     local Frame = Instance.new("Frame")
@@ -1003,212 +1276,7 @@ function Library:CreateColorPicker(group, text, default, callback, parent)
 end
 
 ---------------------------------------------------------------------
--- NOTIFICATIONS (wrapping, stacked)
----------------------------------------------------------------------
-function Library:Notify(text, duration)
-    duration = duration or 3
-    local Notif = Instance.new("Frame")
-    Notif.Name = "Notification"
-    Notif.Size = UDim2.new(0, 360, 0, 56)
-    Notif.Position = UDim2.new(1, -380, 0, 12 + (#self._Notifications * 64))
-    Notif.BackgroundColor3 = self.Theme.Background
-    Notif.BorderSizePixel = 0
-    Notif.Parent = ScreenGui
-    Round(Notif, 10)
-    Stroke(Notif, self.Theme.Border, 1)
-    Notif.ZIndex = 10080
-
-    local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, -20, 1, -12)
-    Label.Position = UDim2.new(0, 10, 0, 6)
-    Label.BackgroundTransparency = 1
-    Label.Text = tostring(text or "")
-    Label.Font = Enum.Font.GothamSemibold
-    Label.TextSize = 13
-    Label.TextColor3 = self.Theme.Text
-    Label.TextWrapped = true
-    Label.TextYAlignment = Enum.TextYAlignment.Top
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Notif
-    Label.TextStrokeTransparency = 0.85
-    Label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
-
-    table.insert(self._Notifications, Notif)
-    Notif.BackgroundTransparency = 1
-    Label.TextTransparency = 1
-
-    task.spawn(function()
-        for i = 1, 10 do
-            Notif.BackgroundTransparency = 1 - (i / 10)
-            Label.TextTransparency = 1 - (i / 10)
-            task.wait(0.02)
-        end
-
-        task.wait(duration)
-
-        for i = 1, 10 do
-            Notif.BackgroundTransparency = i / 10
-            Label.TextTransparency = i / 10
-            task.wait(0.02)
-        end
-
-        local idx
-        for i, v in ipairs(self._Notifications) do
-            if v == Notif then idx = i; break end
-        end
-        if idx then
-            table.remove(self._Notifications, idx)
-            for i = idx, #self._Notifications do
-                local n = self._Notifications[i]
-                n:TweenPosition(UDim2.new(1, -380, 0, 12 + (i - 1) * 64), "Out", "Quad", 0.18, true)
-            end
-        end
-
-        Notif:Destroy()
-    end)
-end
-
----------------------------------------------------------------------
--- WATERMARK (persistent pastel-pink pill, created on load)
----------------------------------------------------------------------
-function Library:Watermark(opts)
-    if self._Watermark and self._Watermark.Parent then return self._Watermark end
-    opts = opts or {}
-    local bgColor = opts.bgColor or self.Theme.Accent
-    local size = opts.size or 18
-
-    local MarkGui = Instance.new("ScreenGui")
-    MarkGui.Name = "extloverWatermark"
-    MarkGui.ResetOnSpawn = false
-    -- prefer PlayerGui so it stays visible when main UI toggles
-    local pg = (Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui"))
-    MarkGui.Parent = pg or CoreGui
-    pcall(function() MarkGui.DisplayOrder = 10095 end)
-
-    local Mark = Instance.new("Frame")
-    Mark.Name = "Watermark"
-    Mark.Size = UDim2.new(0, size, 0, size)
-    Mark.Position = UDim2.new(0, 12, 0, 12)
-    Mark.BackgroundColor3 = bgColor
-    Mark.BorderSizePixel = 0
-    Mark.Parent = MarkGui
-    Round(Mark, size/2)
-    Stroke(Mark, self.Theme.Border, 0.6)
-    Mark.ZIndex = 10095
-
-    -- draggable pill
-    do
-        local dragging, dragStart, startPos = false, nil, nil
-        Mark.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = true
-                dragStart = input.Position
-                startPos = Mark.Position
-            end
-        end)
-        Mark.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-        end)
-        UserInputService.InputChanged:Connect(function(input)
-            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-                local delta = input.Position - dragStart
-                Mark.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            end
-        end)
-    end
-
-    self._Watermark = Mark
-    return Mark
-end
-
--- create watermark immediately
-pcall(function() Library:Watermark() end)
-
----------------------------------------------------------------------
--- INLINE INFO BOX (non-modal)
----------------------------------------------------------------------
-function Library:ShowInfoInline(titleText, bodyText, duration)
-    duration = duration or 4
-    local container = Instance.new("Frame")
-    container.Name = "ExtloverInfoInline"
-    container.Size = UDim2.new(0, 420, 0, 96)
-    container.Position = UDim2.new(0.5, -210, 0.12, 0)
-    container.BackgroundColor3 = self.Theme.Background
-    container.BorderSizePixel = 0
-    container.Parent = ScreenGui
-    Round(container, 10)
-    Stroke(container, self.Theme.Border, 1)
-    container.ZIndex = 10085
-
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -24, 0, 24)
-    title.Position = UDim2.new(0, 12, 0, 8)
-    title.BackgroundTransparency = 1
-    title.Font = Enum.Font.GothamSemibold
-    title.TextSize = 16
-    title.TextColor3 = self.Theme.Text
-    title.Text = titleText or ""
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = container
-
-    local body = Instance.new("TextLabel")
-    body.Size = UDim2.new(1, -24, 1, -44)
-    body.Position = UDim2.new(0, 12, 0, 36)
-    body.BackgroundTransparency = 1
-    body.Font = Enum.Font.Gotham
-    body.TextSize = 14
-    body.TextColor3 = self.Theme.Text
-    body.TextWrapped = true
-    body.TextYAlignment = Enum.TextYAlignment.Top
-    body.Text = bodyText or ""
-    body.Parent = container
-
-    task.spawn(function()
-        task.wait(duration)
-        pcall(function() container:Destroy() end)
-    end)
-
-    return container
-end
-
----------------------------------------------------------------------
--- FUNCTION IMPORT / REGISTRATION API
----------------------------------------------------------------------
-function Library:RegisterFunction(name, fn)
-    if type(name) ~= "string" or type(fn) ~= "function" then
-        error("RegisterFunction expects (string, function)")
-    end
-    self._Functions[name] = fn
-end
-
-function Library:ImportFunctions(tbl, prefix)
-    prefix = prefix or ""
-    if type(tbl) ~= "table" then return end
-    for k, v in pairs(tbl) do
-        if type(k) == "string" and type(v) == "function" then
-            local name = prefix .. k
-            self._Functions[name] = v
-        end
-    end
-end
-
-function Library:CallFunction(name, ...)
-    local fn = self._Functions[name]
-    if type(fn) ~= "function" then
-        error("Function not found: " .. tostring(name))
-    end
-    return pcall(fn, ...)
-end
-
-function Library:ListFunctions()
-    local out = {}
-    for k, v in pairs(self._Functions) do table.insert(out, k) end
-    table.sort(out)
-    return out
-end
-
----------------------------------------------------------------------
--- CONFIG TAB HELPER (Save As required)
+-- Config Tab helper (Save As enforced)
 ---------------------------------------------------------------------
 function Library:AttachConfigTab(Window, tabName)
     local Tab = Window:Tab(tabName or "Configs")
@@ -1301,17 +1369,27 @@ function Library:AttachConfigTab(Window, tabName)
 
         local function cleanup() pcall(function() modal:Destroy() end) end
 
-        saveBtn.MouseButton1Click:Connect(function()
-            local name = tostring(input.Text or ""):gsub("%s+", "")
+        local function doSave()
+            local name = trim(input.Text or "")
             if name == "" then
                 Library:Notify("Please enter a valid name.", 2)
                 return
             end
-            Library:SaveConfig(name)
+            local ok, err = pcall(function() return Library:SaveConfig(name) end)
+            if not ok then
+                Library:Notify("Save failed: " .. tostring(err), 3)
+                warn("[extlover] SaveConfig error:", err)
+            else
+                Library:Notify("Config saved: " .. name, 2)
+            end
             cleanup()
-        end)
+        end
 
+        saveBtn.MouseButton1Click:Connect(doSave)
         cancelBtn.MouseButton1Click:Connect(cleanup)
+        input.FocusLost:Connect(function(enterPressed)
+            if enterPressed then doSave() end
+        end)
     end
 
     Box:Button("Save As...", function() promptSaveConfig("myconfig") end)
@@ -1338,12 +1416,13 @@ function Library:AttachConfigTab(Window, tabName)
 end
 
 ---------------------------------------------------------------------
--- THEME SETTER & TOGGLE KEY
+-- Theme setter and toggle key
 ---------------------------------------------------------------------
 function Library:SetTheme(name)
     local theme = self.Themes[name]
     if not theme then return end
     self.Theme = theme
+    dbg("Theme set to", name)
 end
 
 function Library:SetToggleKey(keycode)
@@ -1368,6 +1447,9 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 ---------------------------------------------------------------------
--- RETURN
+-- Finalize
 ---------------------------------------------------------------------
+Library:Notify(Library.Name .. " loaded", 3)
+dbg("Library loaded; elements:", (function() local c=0; for _ in pairs(Library.Elements) do c=c+1 end; return c end)())
+
 return Library
