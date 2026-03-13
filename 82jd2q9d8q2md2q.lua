@@ -1,15 +1,9 @@
---// securewatch-ui Library (Modern, Fixed: Configs + Watermark + Extras)
--- Full single-file library with fixes for config dropdown nil errors,
--- watermark visibility fallback to PlayerGui, dynamic config dropdown,
--- notification queue, blur, theme switcher, color picker, searchable dropdown,
--- drag + resize, and AttachConfigTab improvements.
-
+--// securewatch-ui Library (Modern, Fixed Dropdowns + Watermark + FPS smoothing)
 local Library = {}
 
 ---------------------------------------------------------------------
 -- SERVICES
 ---------------------------------------------------------------------
-
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
@@ -21,7 +15,6 @@ local Lighting = game:GetService("Lighting")
 ---------------------------------------------------------------------
 -- THEMES
 ---------------------------------------------------------------------
-
 Library.Themes = {
     Pastel = {
         Background     = Color3.fromRGB(32, 32, 38),
@@ -42,13 +35,11 @@ Library.Themes = {
         TextDim        = Color3.fromRGB(170, 170, 190)
     }
 }
-
 Library.Theme = Library.Themes.Pastel
 
 ---------------------------------------------------------------------
 -- HELPERS
 ---------------------------------------------------------------------
-
 local function Round(obj, radius)
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, radius)
@@ -66,14 +57,12 @@ local function Stroke(obj, color, thickness)
 end
 
 local function SafeParentGui(gui)
-    -- Try PlayerGui first (more compatible), fallback to CoreGui
     local pg = (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")) or nil
     if pg then
         gui.Parent = pg
     else
         gui.Parent = CoreGui
     end
-    -- Ensure it's on top
     if gui:IsA("ScreenGui") then
         pcall(function() gui.DisplayOrder = 9999 end)
     end
@@ -87,16 +76,13 @@ local function SafePing()
         end
         return 0
     end)
-    if ok and val then
-        return val
-    end
+    if ok and val then return val end
     return 0
 end
 
 ---------------------------------------------------------------------
 -- MAIN SCREEN GUI
 ---------------------------------------------------------------------
-
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "securewatchUILib"
 ScreenGui.ResetOnSpawn = false
@@ -107,9 +93,7 @@ Library._UIVisible = true
 ---------------------------------------------------------------------
 -- ELEMENT REGISTRATION FOR CONFIGS
 ---------------------------------------------------------------------
-
-Library.Elements = {} -- [ "Group.Element" ] = { type="toggle", set=function(val) end, get=function() end }
-
+Library.Elements = {}
 local function RegisterElement(group, name, element)
     Library.Elements[group .. "." .. name] = element
 end
@@ -117,16 +101,10 @@ end
 ---------------------------------------------------------------------
 -- CONFIG SYSTEM (.txt)
 ---------------------------------------------------------------------
-
 Library.ConfigFolder = "securewatch-ui/configs"
-
 local function EnsureFolder()
-    if not isfolder("securewatch-ui") then
-        makefolder("securewatch-ui")
-    end
-    if not isfolder(Library.ConfigFolder) then
-        makefolder(Library.ConfigFolder)
-    end
+    if not isfolder("securewatch-ui") then makefolder("securewatch-ui") end
+    if not isfolder(Library.ConfigFolder) then makefolder(Library.ConfigFolder) end
 end
 
 function Library:GetConfigs()
@@ -136,9 +114,7 @@ function Library:GetConfigs()
     for _, f in ipairs(files) do
         if f:sub(-4) == ".txt" then
             local name = f:match("([^/\\]+)%.txt$")
-            if name then
-                table.insert(configs, name)
-            end
+            if name then table.insert(configs, name) end
         end
     end
     table.sort(configs)
@@ -148,13 +124,10 @@ end
 function Library:SaveConfig(name)
     EnsureFolder()
     local path = Library.ConfigFolder .. "/" .. name .. ".txt"
-
     local lines = {}
-
     for key, element in pairs(Library.Elements) do
         local ok, value = pcall(function() return element.get() end)
         if not ok then value = nil end
-
         if typeof(value) == "boolean" then
             table.insert(lines, key .. " = " .. tostring(value))
         elseif typeof(value) == "number" then
@@ -162,11 +135,10 @@ function Library:SaveConfig(name)
         elseif typeof(value) == "string" then
             table.insert(lines, key .. " = " .. value)
         elseif typeof(value) == "Color3" then
-            local r, g, b = math.floor(value.R * 255), math.floor(value.G * 255), math.floor(value.B * 255)
+            local r,g,b = math.floor(value.R*255), math.floor(value.G*255), math.floor(value.B*255)
             table.insert(lines, key .. " = " .. r .. "," .. g .. "," .. b)
         end
     end
-
     writefile(path, table.concat(lines, "\n"))
     Library:Notify("Saved config: " .. name, 3)
 end
@@ -174,45 +146,34 @@ end
 function Library:LoadConfig(name)
     EnsureFolder()
     local path = Library.ConfigFolder .. "/" .. name .. ".txt"
-
     if not isfile(path) then
         Library:Notify("Config not found: " .. name, 3)
         return
     end
-
     local data = readfile(path)
     for line in data:gmatch("[^\r\n]+") do
         local key, value = line:match("^(.-)%s*=%s*(.+)$")
         if key and value then
             local element = Library.Elements[key]
             if element then
-                if element.type == "toggle" then
-                    pcall(function() element.set(value == "true") end)
-                elseif element.type == "slider" then
-                    pcall(function() element.set(tonumber(value)) end)
-                elseif element.type == "dropdown" or element.type == "searchdropdown" then
-                    pcall(function() element.set(value) end)
-                elseif element.type == "keybind" then
-                    pcall(function() element.set(value) end)
+                if element.type == "toggle" then pcall(function() element.set(value == "true") end)
+                elseif element.type == "slider" then pcall(function() element.set(tonumber(value)) end)
+                elseif element.type == "dropdown" or element.type == "searchdropdown" then pcall(function() element.set(value) end)
+                elseif element.type == "keybind" then pcall(function() element.set(value) end)
                 elseif element.type == "colorpicker" then
-                    local r, g, b = value:match("(%d+),(%d+),(%d+)")
-                    if r and g and b then
-                        pcall(function() element.set(Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b))) end)
-                    end
+                    local r,g,b = value:match("(%d+),(%d+),(%d+)")
+                    if r and g and b then pcall(function() element.set(Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b))) end) end
                 end
             end
         end
     end
-
     Library:Notify("Loaded config: " .. name, 3)
 end
 
 ---------------------------------------------------------------------
--- BLUR / GLASS MODE
+-- BLUR
 ---------------------------------------------------------------------
-
 local blurEffect
-
 function Library:SetBlur(enabled)
     if enabled then
         if not blurEffect then
@@ -221,20 +182,15 @@ function Library:SetBlur(enabled)
             blurEffect.Parent = Lighting
         end
     else
-        if blurEffect then
-            blurEffect:Destroy()
-            blurEffect = nil
-        end
+        if blurEffect then blurEffect:Destroy(); blurEffect = nil end
     end
 end
 
 ---------------------------------------------------------------------
--- WINDOW + TOPBAR + DRAGGING + RESIZING + TABS
+-- WINDOW + TABS + RESIZE
 ---------------------------------------------------------------------
-
 function Library:Window(title)
     local Window = {}
-
     local Main = Instance.new("Frame")
     Main.Name = "MainWindow"
     Main.Size = UDim2.new(0, 620, 0, 420)
@@ -266,11 +222,9 @@ function Library:Window(title)
     TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
     TitleLabel.Parent = Topbar
 
-    -- Dragging
+    -- dragging
     do
-        local dragging = false
-        local dragStart, startPos
-
+        local dragging, dragStart, startPos = false, nil, nil
         Topbar.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 then
                 dragging = true
@@ -278,27 +232,18 @@ function Library:Window(title)
                 startPos = Main.Position
             end
         end)
-
         Topbar.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
-            end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
         end)
-
         UserInputService.InputChanged:Connect(function(input)
             if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
                 local delta = input.Position - dragStart
-                Main.Position = UDim2.new(
-                    startPos.X.Scale,
-                    startPos.X.Offset + delta.X,
-                    startPos.Y.Scale,
-                    startPos.Y.Offset + delta.Y
-                )
+                Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
             end
         end)
     end
 
-    -- Resize grip
+    -- resize grip
     local ResizeGrip = Instance.new("Frame")
     ResizeGrip.Size = UDim2.new(0, 16, 0, 16)
     ResizeGrip.Position = UDim2.new(1, -18, 1, -18)
@@ -308,9 +253,7 @@ function Library:Window(title)
     Round(ResizeGrip, 4)
     Stroke(ResizeGrip, self.Theme.Border, 1)
 
-    local resizing = false
-    local resizeStart, startSize
-
+    local resizing, resizeStart, startSize = false, nil, nil
     ResizeGrip.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             resizing = true
@@ -318,13 +261,9 @@ function Library:Window(title)
             startSize = Main.Size
         end
     end)
-
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            resizing = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then resizing = false end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
         if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - resizeStart
@@ -334,7 +273,7 @@ function Library:Window(title)
         end
     end)
 
-    -- Tab bar
+    -- tab bar
     local TabBar = Instance.new("Frame")
     TabBar.Size = UDim2.new(0, 130, 1, -30)
     TabBar.Position = UDim2.new(0, 0, 0, 30)
@@ -361,10 +300,8 @@ function Library:Window(title)
     Stroke(TabContentHolder, self.Theme.Border, 1)
 
     local currentTab
-
     function Window:Tab(name)
         local Tab = {}
-
         local Button = Instance.new("TextButton")
         Button.Size = UDim2.new(1, -16, 0, 26)
         Button.BackgroundColor3 = Library.Theme.Background
@@ -377,15 +314,10 @@ function Library:Window(title)
         Round(Button, 6)
 
         Button.MouseEnter:Connect(function()
-            if currentTab ~= Tab then
-                Button.BackgroundColor3 = Library.Theme.BackgroundAlt
-            end
+            if currentTab ~= Tab then Button.BackgroundColor3 = Library.Theme.BackgroundAlt end
         end)
-
         Button.MouseLeave:Connect(function()
-            if currentTab ~= Tab then
-                Button.BackgroundColor3 = Library.Theme.Background
-            end
+            if currentTab ~= Tab then Button.BackgroundColor3 = Library.Theme.Background end
         end)
 
         local Content = Instance.new("Frame")
@@ -420,14 +352,11 @@ function Library:Window(title)
             currentTab = Tab
             currentTab.Content.Visible = true
             currentTab.Button.BackgroundColor3 = Library.Theme.AccentDark
-            currentTab.Button.TextColor3 = Color3.new(1, 1, 1)
+            currentTab.Button.TextColor3 = Color3.new(1,1,1)
         end
 
         Button.MouseButton1Click:Connect(Activate)
-
-        if not currentTab then
-            Activate()
-        end
+        if not currentTab then Activate() end
 
         function Tab:Group(gname, side)
             local parent = (side == "Right") and Right or Left
@@ -439,17 +368,14 @@ function Library:Window(title)
 
     Window.Main = Main
     Window.TabContentHolder = TabContentHolder
-
     return Window
 end
 
 ---------------------------------------------------------------------
 -- GROUPBOX
 ---------------------------------------------------------------------
-
 function Library:CreateGroupbox(name, parent)
     local Box = {}
-
     local Frame = Instance.new("Frame")
     Frame.Size = UDim2.new(1, -10, 0, 220)
     Frame.BackgroundColor3 = self.Theme.Background
@@ -474,7 +400,7 @@ function Library:CreateGroupbox(name, parent)
     Scroll.Position = UDim2.new(0, 5, 0, 26)
     Scroll.BackgroundTransparency = 1
     Scroll.BorderSizePixel = 0
-    Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    Scroll.CanvasSize = UDim2.new(0,0,0,0)
     Scroll.ScrollBarThickness = 2
     Scroll.ScrollBarImageColor3 = self.Theme.Accent
     Scroll.Parent = Frame
@@ -482,41 +408,20 @@ function Library:CreateGroupbox(name, parent)
     local Layout = Instance.new("UIListLayout")
     Layout.Padding = UDim.new(0, 8)
     Layout.Parent = Scroll
-
     Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y)
+        Scroll.CanvasSize = UDim2.new(0,0,0,Layout.AbsoluteContentSize.Y)
     end)
 
     Box.Frame = Frame
     Box.Scroll = Scroll
 
-    function Box:Toggle(text, default, callback)
-        return Library:CreateToggle(name, text, default, callback, Scroll)
-    end
-
-    function Box:Slider(text, min, max, default, callback)
-        return Library:CreateSlider(name, text, min, max, default, callback, Scroll)
-    end
-
-    function Box:Dropdown(text, list, default, callback)
-        return Library:CreateDropdown(name, text, list, default, callback, Scroll)
-    end
-
-    function Box:SearchDropdown(text, list, default, callback)
-        return Library:CreateSearchDropdown(name, text, list, default, callback, Scroll)
-    end
-
-    function Box:Keybind(text, defaultKey, mode, callback)
-        return Library:CreateKeybind(name, text, defaultKey, mode, callback, Scroll)
-    end
-
-    function Box:Button(text, callback)
-        return Library:CreateButton(name, text, callback, Scroll)
-    end
-
-    function Box:ColorPicker(text, default, callback)
-        return Library:CreateColorPicker(name, text, default, callback, Scroll)
-    end
+    function Box:Toggle(text, default, callback) return Library:CreateToggle(name, text, default, callback, Scroll) end
+    function Box:Slider(text, min, max, default, callback) return Library:CreateSlider(name, text, min, max, default, callback, Scroll) end
+    function Box:Dropdown(text, list, default, callback) return Library:CreateDropdown(name, text, list, default, callback, Scroll) end
+    function Box:SearchDropdown(text, list, default, callback) return Library:CreateSearchDropdown(name, text, list, default, callback, Scroll) end
+    function Box:Keybind(text, defaultKey, mode, callback) return Library:CreateKeybind(name, text, defaultKey, mode, callback, Scroll) end
+    function Box:Button(text, callback) return Library:CreateButton(name, text, callback, Scroll) end
+    function Box:ColorPicker(text, default, callback) return Library:CreateColorPicker(name, text, default, callback, Scroll) end
 
     return Box
 end
@@ -524,34 +429,32 @@ end
 ---------------------------------------------------------------------
 -- ELEMENTS
 ---------------------------------------------------------------------
-
 -- TOGGLE
 function Library:CreateToggle(group, text, default, callback, parent)
     local Toggle = {}
-
     local Frame = Instance.new("Frame")
     Frame.Size = UDim2.new(1, -10, 0, 24)
     Frame.BackgroundTransparency = 1
     Frame.Parent = parent
 
     local Button = Instance.new("TextButton")
-    Button.Size = UDim2.new(1, 0, 1, 0)
+    Button.Size = UDim2.new(1,0,1,0)
     Button.BackgroundTransparency = 1
     Button.Text = ""
     Button.Parent = Frame
 
     local Box = Instance.new("Frame")
-    Box.Size = UDim2.new(0, 18, 0, 18)
-    Box.Position = UDim2.new(0, 0, 0.5, -9)
+    Box.Size = UDim2.new(0,18,0,18)
+    Box.Position = UDim2.new(0,0,0.5,-9)
     Box.BackgroundColor3 = Library.Theme.BackgroundAlt
     Box.BorderSizePixel = 0
     Box.Parent = Frame
-    Round(Box, 4)
+    Round(Box,4)
     Stroke(Box, Library.Theme.Border, 1)
 
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, -26, 1, 0)
-    Label.Position = UDim2.new(0, 26, 0, 0)
+    Label.Size = UDim2.new(1,-26,1,0)
+    Label.Position = UDim2.new(0,26,0,0)
     Label.BackgroundTransparency = 1
     Label.Text = text
     Label.Font = Enum.Font.Gotham
@@ -561,7 +464,6 @@ function Library:CreateToggle(group, text, default, callback, parent)
     Label.Parent = Frame
 
     local state = default or false
-
     local function Update()
         if state then
             Box.BackgroundColor3 = Library.Theme.Accent
@@ -575,51 +477,28 @@ function Library:CreateToggle(group, text, default, callback, parent)
         if callback then pcall(callback, state) end
     end
 
-    Button.MouseButton1Click:Connect(function()
-        state = not state
-        Update()
-    end)
-
-    Button.MouseEnter:Connect(function()
-        Label.TextColor3 = Library.Theme.Accent
-    end)
-
-    Button.MouseLeave:Connect(function()
-        Label.TextColor3 = Library.Theme.Text
-    end)
-
+    Button.MouseButton1Click:Connect(function() state = not state; Update() end)
+    Button.MouseEnter:Connect(function() Label.TextColor3 = Library.Theme.Accent end)
+    Button.MouseLeave:Connect(function() Label.TextColor3 = Library.Theme.Text end)
     Update()
 
-    Toggle.set = function(val)
-        state = val
-        Update()
-    end
-
-    Toggle.get = function()
-        return state
-    end
-
+    Toggle.set = function(val) state = val; Update() end
+    Toggle.get = function() return state end
     Toggle.type = "toggle"
-
     RegisterElement(group, text, Toggle)
-
     return Toggle
 end
 
----------------------------------------------------------------------
 -- SLIDER
----------------------------------------------------------------------
-
 function Library:CreateSlider(group, text, min, max, default, callback, parent)
     local Slider = {}
-
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 44)
+    Frame.Size = UDim2.new(1,-10,0,44)
     Frame.BackgroundTransparency = 1
     Frame.Parent = parent
 
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, 0, 0, 18)
+    Label.Size = UDim2.new(1,0,0,18)
     Label.BackgroundTransparency = 1
     Label.Text = text .. " (" .. default .. ")"
     Label.Font = Enum.Font.Gotham
@@ -629,90 +508,67 @@ function Library:CreateSlider(group, text, min, max, default, callback, parent)
     Label.Parent = Frame
 
     local Bar = Instance.new("Frame")
-    Bar.Size = UDim2.new(1, 0, 0, 8)
-    Bar.Position = UDim2.new(0, 0, 0, 24)
+    Bar.Size = UDim2.new(1,0,0,8)
+    Bar.Position = UDim2.new(0,0,0,24)
     Bar.BackgroundColor3 = Library.Theme.BackgroundAlt
     Bar.BorderSizePixel = 0
     Bar.Parent = Frame
-    Round(Bar, 4)
+    Round(Bar,4)
     Stroke(Bar, Library.Theme.Border, 1)
 
     local Fill = Instance.new("Frame")
-    Fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    Fill.Size = UDim2.new((default-min)/(max-min),0,1,0)
     Fill.BackgroundColor3 = Library.Theme.Accent
     Fill.BorderSizePixel = 0
     Fill.Parent = Bar
-    Round(Fill, 4)
+    Round(Fill,4)
 
     local dragging = false
     local value = default
-
     local function Update(inputX)
         local rel = math.clamp((inputX - Bar.AbsolutePosition.X) / Bar.AbsoluteSize.X, 0, 1)
-        value = math.floor(min + (max - min) * rel + 0.5)
-        Fill.Size = UDim2.new(rel, 0, 1, 0)
+        value = math.floor(min + (max-min)*rel + 0.5)
+        Fill.Size = UDim2.new(rel,0,1,0)
         Label.Text = text .. " (" .. value .. ")"
         if callback then pcall(callback, value) end
     end
 
     Bar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            Update(input.Position.X)
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; Update(input.Position.X) end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            Update(input.Position.X)
-        end
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then Update(input.Position.X) end
     end)
-
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
     end)
 
-    Slider.set = function(val)
-        value = val
-        local rel = (val - min) / (max - min)
-        Fill.Size = UDim2.new(rel, 0, 1, 0)
-        Label.Text = text .. " (" .. value .. ")"
-    end
-
-    Slider.get = function()
-        return value
-    end
-
+    Slider.set = function(val) value = val; local rel = (val-min)/(max-min); Fill.Size = UDim2.new(rel,0,1,0); Label.Text = text .. " (" .. value .. ")" end
+    Slider.get = function() return value end
     Slider.type = "slider"
-
     RegisterElement(group, text, Slider)
-
     return Slider
 end
 
 ---------------------------------------------------------------------
--- DROPDOWN (dynamic list support)
+-- DROPDOWN (fixed: list parented to top-level GUI and positioned absolutely)
 ---------------------------------------------------------------------
-
 function Library:CreateDropdown(group, text, list, default, callback, parent)
     local Dropdown = {}
-
     list = list or {}
     default = default or (list[1] or "None")
 
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 28)
+    Frame.Size = UDim2.new(1,-10,0,28)
     Frame.BackgroundColor3 = Library.Theme.BackgroundAlt
     Frame.BorderSizePixel = 0
     Frame.Parent = parent
-    Round(Frame, 6)
-    Stroke(Frame, Library.Theme.Border, 1)
+    Round(Frame,6)
+    Stroke(Frame, Library.Theme.Border,1)
 
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, -10, 1, 0)
-    Label.Position = UDim2.new(0, 6, 0, 0)
+    Label.Size = UDim2.new(1,-10,1,0)
+    Label.Position = UDim2.new(0,6,0,0)
     Label.BackgroundTransparency = 1
     Label.Text = text .. ": " .. default
     Label.Font = Enum.Font.Gotham
@@ -722,8 +578,8 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
     Label.Parent = Frame
 
     local Arrow = Instance.new("TextLabel")
-    Arrow.Size = UDim2.new(0, 16, 1, 0)
-    Arrow.Position = UDim2.new(1, -18, 0, 0)
+    Arrow.Size = UDim2.new(0,16,1,0)
+    Arrow.Position = UDim2.new(1,-18,0,0)
     Arrow.BackgroundTransparency = 1
     Arrow.Text = "▼"
     Arrow.Font = Enum.Font.Gotham
@@ -734,31 +590,29 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
 
     local Open = false
 
+    -- ListFrame will be parented to top-level ScreenGui to avoid clipping
     local ListFrame = Instance.new("Frame")
-    ListFrame.Size = UDim2.new(1, 0, 0, 0)
-    ListFrame.Position = UDim2.new(0, 0, 1, 4)
+    ListFrame.Size = UDim2.new(0, 0, 0, 0)
+    ListFrame.Position = UDim2.new(0, 0, 0, 0)
     ListFrame.BackgroundColor3 = Library.Theme.Background
     ListFrame.BorderSizePixel = 0
     ListFrame.Visible = false
-    ListFrame.Parent = Frame
-    Round(ListFrame, 6)
-    Stroke(ListFrame, Library.Theme.Border, 1)
+    ListFrame.Parent = ScreenGui -- top-level
+    Round(ListFrame,6)
+    Stroke(ListFrame, Library.Theme.Border,1)
+    ListFrame.ZIndex = 9999
 
     local Layout = Instance.new("UIListLayout")
     Layout.Parent = ListFrame
 
     local function BuildList(newList)
         newList = newList or {}
-        -- clear
         for _, child in ipairs(ListFrame:GetChildren()) do
-            if child:IsA("TextButton") or child:IsA("TextLabel") then
-                child:Destroy()
-            end
+            if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
         end
-
         for _, item in ipairs(newList) do
             local Option = Instance.new("TextButton")
-            Option.Size = UDim2.new(1, 0, 0, 24)
+            Option.Size = UDim2.new(1,0,0,24)
             Option.BackgroundTransparency = 1
             Option.Text = item
             Option.Font = Enum.Font.Gotham
@@ -766,14 +620,8 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
             Option.TextColor3 = Library.Theme.Text
             Option.Parent = ListFrame
 
-            Option.MouseEnter:Connect(function()
-                Option.TextColor3 = Library.Theme.Accent
-            end)
-
-            Option.MouseLeave:Connect(function()
-                Option.TextColor3 = Library.Theme.Text
-            end)
-
+            Option.MouseEnter:Connect(function() Option.TextColor3 = Library.Theme.Accent end)
+            Option.MouseLeave:Connect(function() Option.TextColor3 = Library.Theme.Text end)
             Option.MouseButton1Click:Connect(function()
                 Label.Text = text .. ": " .. item
                 ListFrame.Visible = false
@@ -782,19 +630,33 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
                 if callback then pcall(callback, item) end
             end)
         end
-
-        -- adjust size
         local total = #newList * 24
-        ListFrame.Size = UDim2.new(1, 0, 0, total)
+        ListFrame.Size = UDim2.new(0, Frame.AbsoluteSize.X, 0, total)
     end
 
     BuildList(list)
 
+    local function OpenList()
+        if not ListFrame then return end
+        local absPos = Frame.AbsolutePosition
+        local absSize = Frame.AbsoluteSize
+        ListFrame.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 4)
+        ListFrame.Size = UDim2.new(0, absSize.X, 0, math.min(200, (#list * 24)))
+        ListFrame.Visible = true
+        ListFrame.ZIndex = 9999
+    end
+
     Frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             Open = not Open
-            ListFrame.Visible = Open
-            Arrow.Text = Open and "▲" or "▼"
+            if Open then
+                BuildList(list)
+                OpenList()
+                Arrow.Text = "▲"
+            else
+                ListFrame.Visible = false
+                Arrow.Text = "▼"
+            end
         end
     end)
 
@@ -803,48 +665,38 @@ function Library:CreateDropdown(group, text, list, default, callback, parent)
         Label.Text = text .. ": " .. val
     end
 
-    Dropdown.get = function()
-        return Label.Text:sub(#text + 3)
-    end
+    Dropdown.get = function() return Label.Text:sub(#text + 3) end
 
     Dropdown.setList = function(newList)
         list = newList or {}
-        if #list == 0 then
-            Dropdown.set("None")
-        else
-            Dropdown.set(list[1])
-        end
+        if #list == 0 then Dropdown.set("None") else Dropdown.set(list[1]) end
         BuildList(list)
     end
 
     Dropdown.type = "dropdown"
-
     RegisterElement(group, text, Dropdown)
-
     return Dropdown
 end
 
 ---------------------------------------------------------------------
--- SEARCHABLE DROPDOWN
+-- SEARCHABLE DROPDOWN (same absolute positioning approach)
 ---------------------------------------------------------------------
-
 function Library:CreateSearchDropdown(group, text, list, default, callback, parent)
     local Dropdown = {}
-
     list = list or {}
     default = default or (list[1] or "None")
 
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 28)
+    Frame.Size = UDim2.new(1,-10,0,28)
     Frame.BackgroundColor3 = Library.Theme.BackgroundAlt
     Frame.BorderSizePixel = 0
     Frame.Parent = parent
-    Round(Frame, 6)
-    Stroke(Frame, Library.Theme.Border, 1)
+    Round(Frame,6)
+    Stroke(Frame, Library.Theme.Border,1)
 
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, -10, 1, 0)
-    Label.Position = UDim2.new(0, 6, 0, 0)
+    Label.Size = UDim2.new(1,-10,1,0)
+    Label.Position = UDim2.new(0,6,0,0)
     Label.BackgroundTransparency = 1
     Label.Text = text .. ": " .. default
     Label.Font = Enum.Font.Gotham
@@ -854,8 +706,8 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
     Label.Parent = Frame
 
     local Arrow = Instance.new("TextLabel")
-    Arrow.Size = UDim2.new(0, 16, 1, 0)
-    Arrow.Position = UDim2.new(1, -18, 0, 0)
+    Arrow.Size = UDim2.new(0,16,1,0)
+    Arrow.Position = UDim2.new(1,-18,0,0)
     Arrow.BackgroundTransparency = 1
     Arrow.Text = "▼"
     Arrow.Font = Enum.Font.Gotham
@@ -865,20 +717,20 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
     Arrow.Parent = Frame
 
     local Open = false
-
     local ListFrame = Instance.new("Frame")
-    ListFrame.Size = UDim2.new(1, 0, 0, 150)
-    ListFrame.Position = UDim2.new(0, 0, 1, 4)
+    ListFrame.Size = UDim2.new(0,0,0,0)
+    ListFrame.Position = UDim2.new(0,0,0,0)
     ListFrame.BackgroundColor3 = Library.Theme.Background
     ListFrame.BorderSizePixel = 0
     ListFrame.Visible = false
-    ListFrame.Parent = Frame
-    Round(ListFrame, 6)
-    Stroke(ListFrame, Library.Theme.Border, 1)
+    ListFrame.Parent = ScreenGui
+    Round(ListFrame,6)
+    Stroke(ListFrame, Library.Theme.Border,1)
+    ListFrame.ZIndex = 9999
 
     local SearchBox = Instance.new("TextBox")
-    SearchBox.Size = UDim2.new(1, -8, 0, 20)
-    SearchBox.Position = UDim2.new(0, 4, 0, 4)
+    SearchBox.Size = UDim2.new(1,-8,0,20)
+    SearchBox.Position = UDim2.new(0,4,0,4)
     SearchBox.BackgroundColor3 = Library.Theme.BackgroundAlt
     SearchBox.BorderSizePixel = 0
     SearchBox.Font = Enum.Font.Gotham
@@ -888,14 +740,14 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
     SearchBox.PlaceholderColor3 = Library.Theme.TextDim
     SearchBox.Text = ""
     SearchBox.Parent = ListFrame
-    Round(SearchBox, 4)
+    Round(SearchBox,4)
 
     local Scroll = Instance.new("ScrollingFrame")
-    Scroll.Size = UDim2.new(1, -8, 1, -28)
-    Scroll.Position = UDim2.new(0, 4, 0, 24)
+    Scroll.Size = UDim2.new(1,-8,1,-28)
+    Scroll.Position = UDim2.new(0,4,0,24)
     Scroll.BackgroundTransparency = 1
     Scroll.BorderSizePixel = 0
-    Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    Scroll.CanvasSize = UDim2.new(0,0,0,0)
     Scroll.ScrollBarThickness = 2
     Scroll.ScrollBarImageColor3 = Library.Theme.Accent
     Scroll.Parent = ListFrame
@@ -904,16 +756,11 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
     Layout.Parent = Scroll
 
     local function Refresh(filter)
-        for _, child in ipairs(Scroll:GetChildren()) do
-            if child:IsA("TextButton") then
-                child:Destroy()
-            end
-        end
-
+        for _, child in ipairs(Scroll:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
         for _, item in ipairs(list) do
             if not filter or filter == "" or string.find(string.lower(item), string.lower(filter), 1, true) then
                 local Option = Instance.new("TextButton")
-                Option.Size = UDim2.new(1, 0, 0, 22)
+                Option.Size = UDim2.new(1,0,0,22)
                 Option.BackgroundTransparency = 1
                 Option.Text = item
                 Option.Font = Enum.Font.Gotham
@@ -921,14 +768,8 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
                 Option.TextColor3 = Library.Theme.Text
                 Option.Parent = Scroll
 
-                Option.MouseEnter:Connect(function()
-                    Option.TextColor3 = Library.Theme.Accent
-                end)
-
-                Option.MouseLeave:Connect(function()
-                    Option.TextColor3 = Library.Theme.Text
-                end)
-
+                Option.MouseEnter:Connect(function() Option.TextColor3 = Library.Theme.Accent end)
+                Option.MouseLeave:Connect(function() Option.TextColor3 = Library.Theme.Text end)
                 Option.MouseButton1Click:Connect(function()
                     Label.Text = text .. ": " .. item
                     ListFrame.Visible = false
@@ -938,12 +779,11 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
                 end)
             end
         end
-
-        Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y)
+        Scroll.CanvasSize = UDim2.new(0,0,0,Layout.AbsoluteContentSize.Y)
     end
 
     Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y)
+        Scroll.CanvasSize = UDim2.new(0,0,0,Layout.AbsoluteContentSize.Y)
     end)
 
     Refresh()
@@ -952,54 +792,44 @@ function Library:CreateSearchDropdown(group, text, list, default, callback, pare
         Refresh(SearchBox.Text)
     end)
 
+    local function OpenList()
+        local absPos = Frame.AbsolutePosition
+        local absSize = Frame.AbsoluteSize
+        ListFrame.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 4)
+        ListFrame.Size = UDim2.new(0, absSize.X, 0, 180)
+        ListFrame.Visible = true
+        ListFrame.ZIndex = 9999
+    end
+
     Frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             Open = not Open
-            ListFrame.Visible = Open
-            Arrow.Text = Open and "▲" or "▼"
+            if Open then OpenList(); Arrow.Text = "▲" else ListFrame.Visible = false; Arrow.Text = "▼" end
         end
     end)
 
-    Dropdown.set = function(val)
-        if val == nil then val = "None" end
-        Label.Text = text .. ": " .. val
-    end
-
-    Dropdown.get = function()
-        return Label.Text:sub(#text + 3)
-    end
-
-    Dropdown.setList = function(newList)
-        list = newList or {}
-        if #list == 0 then
-            Dropdown.set("None")
-        else
-            Dropdown.set(list[1])
-        end
-        Refresh()
-    end
+    Dropdown = Dropdown or {}
+    Dropdown.set = function(val) if val == nil then val = "None" end; Label.Text = text .. ": " .. val end
+    Dropdown.get = function() return Label.Text:sub(#text + 3) end
+    Dropdown.setList = function(newList) list = newList or {}; if #list == 0 then Dropdown.set("None") else Dropdown.set(list[1]) end; Refresh() end
 
     Dropdown.type = "searchdropdown"
-
     RegisterElement(group, text, Dropdown)
-
     return Dropdown
 end
 
 ---------------------------------------------------------------------
 -- KEYBIND
 ---------------------------------------------------------------------
-
 function Library:CreateKeybind(group, text, defaultKey, mode, callback, parent)
     local Keybind = {}
-
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 24)
+    Frame.Size = UDim2.new(1,-10,0,24)
     Frame.BackgroundTransparency = 1
     Frame.Parent = parent
 
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(0.5, 0, 1, 0)
+    Label.Size = UDim2.new(0.5,0,1,0)
     Label.BackgroundTransparency = 1
     Label.Text = text
     Label.Font = Enum.Font.Gotham
@@ -1009,8 +839,8 @@ function Library:CreateKeybind(group, text, defaultKey, mode, callback, parent)
     Label.Parent = Frame
 
     local Button = Instance.new("TextButton")
-    Button.Size = UDim2.new(0.5, -4, 1, 0)
-    Button.Position = UDim2.new(0.5, 4, 0, 0)
+    Button.Size = UDim2.new(0.5,-4,1,0)
+    Button.Position = UDim2.new(0.5,4,0,0)
     Button.BackgroundColor3 = Library.Theme.BackgroundAlt
     Button.BorderSizePixel = 0
     Button.Text = defaultKey or "Q"
@@ -1018,30 +848,18 @@ function Library:CreateKeybind(group, text, defaultKey, mode, callback, parent)
     Button.TextSize = 14
     Button.TextColor3 = Library.Theme.Text
     Button.Parent = Frame
-    Round(Button, 6)
-    Stroke(Button, Library.Theme.Border, 1)
+    Round(Button,6)
+    Stroke(Button, Library.Theme.Border,1)
 
     local binding = false
     local currentKey = Enum.KeyCode[defaultKey] or Enum.KeyCode.Q
 
-    Button.MouseButton1Click:Connect(function()
-        binding = true
-        Button.Text = "..."
-    end)
-
-    Button.MouseEnter:Connect(function()
-        Button.BackgroundColor3 = Library.Theme.Background
-    end)
-
-    Button.MouseLeave:Connect(function()
-        if not binding then
-            Button.BackgroundColor3 = Library.Theme.BackgroundAlt
-        end
-    end)
+    Button.MouseButton1Click:Connect(function() binding = true; Button.Text = "..." end)
+    Button.MouseEnter:Connect(function() Button.BackgroundColor3 = Library.Theme.Background end)
+    Button.MouseLeave:Connect(function() if not binding then Button.BackgroundColor3 = Library.Theme.BackgroundAlt end end)
 
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
-
         if binding then
             if input.KeyCode ~= Enum.KeyCode.Unknown then
                 currentKey = input.KeyCode
@@ -1050,35 +868,23 @@ function Library:CreateKeybind(group, text, defaultKey, mode, callback, parent)
                 Button.BackgroundColor3 = Library.Theme.BackgroundAlt
             end
         else
-            if input.KeyCode == currentKey then
-                if callback then pcall(callback) end
-            end
+            if input.KeyCode == currentKey then if callback then pcall(callback) end end
         end
     end)
 
-    Keybind.set = function(val)
-        currentKey = Enum.KeyCode[val] or Enum.KeyCode.Q
-        Button.Text = val
-    end
-
-    Keybind.get = function()
-        return Button.Text
-    end
-
+    Keybind.set = function(val) currentKey = Enum.KeyCode[val] or Enum.KeyCode.Q; Button.Text = val end
+    Keybind.get = function() return Button.Text end
     Keybind.type = "keybind"
-
     RegisterElement(group, text, Keybind)
-
     return Keybind
 end
 
 ---------------------------------------------------------------------
 -- BUTTON
 ---------------------------------------------------------------------
-
 function Library:CreateButton(group, text, callback, parent)
     local Button = Instance.new("TextButton")
-    Button.Size = UDim2.new(1, -10, 0, 28)
+    Button.Size = UDim2.new(1,-10,0,28)
     Button.BackgroundColor3 = Library.Theme.BackgroundAlt
     Button.BorderSizePixel = 0
     Button.Text = text
@@ -1086,38 +892,27 @@ function Library:CreateButton(group, text, callback, parent)
     Button.TextSize = 14
     Button.TextColor3 = Library.Theme.Text
     Button.Parent = parent
-    Round(Button, 6)
-    Stroke(Button, Library.Theme.Border, 1)
+    Round(Button,6)
+    Stroke(Button, Library.Theme.Border,1)
 
-    Button.MouseEnter:Connect(function()
-        Button.BackgroundColor3 = Library.Theme.Background
-    end)
-
-    Button.MouseLeave:Connect(function()
-        Button.BackgroundColor3 = Library.Theme.BackgroundAlt
-    end)
-
-    Button.MouseButton1Click:Connect(function()
-        if callback then pcall(callback) end
-    end)
-
+    Button.MouseEnter:Connect(function() Button.BackgroundColor3 = Library.Theme.Background end)
+    Button.MouseLeave:Connect(function() Button.BackgroundColor3 = Library.Theme.BackgroundAlt end)
+    Button.MouseButton1Click:Connect(function() if callback then pcall(callback) end end)
     return Button
 end
 
 ---------------------------------------------------------------------
 -- COLOR PICKER (simple)
 ---------------------------------------------------------------------
-
 function Library:CreateColorPicker(group, text, default, callback, parent)
     local Picker = {}
-
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 24)
+    Frame.Size = UDim2.new(1,-10,0,24)
     Frame.BackgroundTransparency = 1
     Frame.Parent = parent
 
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(0.5, 0, 1, 0)
+    Label.Size = UDim2.new(0.5,0,1,0)
     Label.BackgroundTransparency = 1
     Label.Text = text
     Label.Font = Enum.Font.Gotham
@@ -1127,77 +922,57 @@ function Library:CreateColorPicker(group, text, default, callback, parent)
     Label.Parent = Frame
 
     local Button = Instance.new("TextButton")
-    Button.Size = UDim2.new(0.5, -4, 1, 0)
-    Button.Position = UDim2.new(0.5, 4, 0, 0)
-    Button.BackgroundColor3 = default or Color3.fromRGB(255, 160, 200)
+    Button.Size = UDim2.new(0.5,-4,1,0)
+    Button.Position = UDim2.new(0.5,4,0,0)
+    Button.BackgroundColor3 = default or Color3.fromRGB(255,160,200)
     Button.BorderSizePixel = 0
     Button.Text = ""
     Button.Parent = Frame
-    Round(Button, 6)
-    Stroke(Button, Library.Theme.Border, 1)
+    Round(Button,6)
+    Stroke(Button, Library.Theme.Border,1)
 
     local value = Button.BackgroundColor3
-
     Button.MouseButton1Click:Connect(function()
-        -- simple cycle through a few colors
         local colors = {
-            Color3.fromRGB(255, 160, 200),
-            Color3.fromRGB(120, 180, 255),
-            Color3.fromRGB(120, 255, 180),
-            Color3.fromRGB(255, 220, 120)
+            Color3.fromRGB(255,160,200),
+            Color3.fromRGB(255,140,180),
+            Color3.fromRGB(255,200,220),
+            Color3.fromRGB(255,220,120)
         }
         local idx = 1
-        for i, c in ipairs(colors) do
-            if c == value then
-                idx = i
-                break
-            end
-        end
+        for i,c in ipairs(colors) do if c == value then idx = i; break end end
         idx = idx % #colors + 1
         value = colors[idx]
         Button.BackgroundColor3 = value
         if callback then pcall(callback, value) end
     end)
 
-    Picker.set = function(val)
-        value = val
-        Button.BackgroundColor3 = val
-        if callback then pcall(callback, val) end
-    end
-
-    Picker.get = function()
-        return value
-    end
-
+    Picker.set = function(val) value = val; Button.BackgroundColor3 = val; if callback then pcall(callback, val) end end
+    Picker.get = function() return value end
     Picker.type = "colorpicker"
-
     RegisterElement(group, text, Picker)
-
     return Picker
 end
 
 ---------------------------------------------------------------------
 -- NOTIFICATION QUEUE
 ---------------------------------------------------------------------
-
 Library._Notifications = {}
-
 function Library:Notify(text, duration)
     duration = duration or 3
-
     local Notif = Instance.new("Frame")
     Notif.Name = "Notification"
-    Notif.Size = UDim2.new(0, 260, 0, 40)
+    Notif.Size = UDim2.new(0,260,0,40)
     Notif.Position = UDim2.new(1, -280, 0, 12 + (#self._Notifications * 44))
     Notif.BackgroundColor3 = self.Theme.Background
     Notif.BorderSizePixel = 0
     Notif.Parent = ScreenGui
-    Round(Notif, 8)
-    Stroke(Notif, self.Theme.Border, 1)
+    Round(Notif,8)
+    Stroke(Notif, self.Theme.Border,1)
 
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, -12, 1, 0)
-    Label.Position = UDim2.new(0, 6, 0, 0)
+    Label.Size = UDim2.new(1,-12,1,0)
+    Label.Position = UDim2.new(0,6,0,0)
     Label.BackgroundTransparency = 1
     Label.Text = text
     Label.Font = Enum.Font.Gotham
@@ -1207,32 +982,16 @@ function Library:Notify(text, duration)
     Label.Parent = Notif
 
     table.insert(self._Notifications, Notif)
-
     Notif.BackgroundTransparency = 1
     Label.TextTransparency = 1
 
     task.spawn(function()
-        for i = 1, 10 do
-            Notif.BackgroundTransparency = 1 - (i / 10)
-            Label.TextTransparency = 1 - (i / 10)
-            task.wait(0.02)
-        end
-
+        for i=1,10 do Notif.BackgroundTransparency = 1 - (i/10); Label.TextTransparency = 1 - (i/10); task.wait(0.02) end
         task.wait(duration)
-
-        for i = 1, 10 do
-            Notif.BackgroundTransparency = i / 10
-            Label.TextTransparency = i / 10
-            task.wait(0.02)
-        end
+        for i=1,10 do Notif.BackgroundTransparency = i/10; Label.TextTransparency = i/10; task.wait(0.02) end
 
         local idx
-        for i, v in ipairs(self._Notifications) do
-            if v == Notif then
-                idx = i
-                break
-            end
-        end
+        for i,v in ipairs(self._Notifications) do if v == Notif then idx = i; break end end
         if idx then
             table.remove(self._Notifications, idx)
             for i = idx, #self._Notifications do
@@ -1240,119 +999,123 @@ function Library:Notify(text, duration)
                 n:TweenPosition(UDim2.new(1, -280, 0, 12 + (i - 1) * 44), "Out", "Quad", 0.2, true)
             end
         end
-
         Notif:Destroy()
     end)
 end
 
 ---------------------------------------------------------------------
--- WATERMARK (FPS + PING, robust + always visible)
+-- WATERMARK (robust, pastel-pink style, draggable, FPS smoothing)
 ---------------------------------------------------------------------
-
-function Library:Watermark(textBase)
+function Library:Watermark(textBase, opts)
     if self._Watermark then
         self._WatermarkBase = textBase or self._WatermarkBase
         return
     end
 
+    opts = opts or {}
+    local bgColor = opts.bgColor or self.Theme.Accent
+    local textColor = opts.textColor or Color3.fromRGB(255,255,255)
+    local sizeX = opts.width or 300
+
     local MarkGui = Instance.new("ScreenGui")
     MarkGui.Name = "securewatchWatermark"
     MarkGui.ResetOnSpawn = false
-    -- prefer PlayerGui, fallback to CoreGui
     SafeParentGui(MarkGui)
 
-    local Mark = Instance.new("TextLabel")
+    local Mark = Instance.new("Frame")
     Mark.Name = "Watermark"
-    Mark.Size = UDim2.new(0, 320, 0, 20)
+    Mark.Size = UDim2.new(0, sizeX, 0, 22)
     Mark.Position = UDim2.new(0, 10, 0, 10)
-    Mark.BackgroundColor3 = self.Theme.Background
+    Mark.BackgroundColor3 = bgColor
     Mark.BorderSizePixel = 0
-    Mark.Font = Enum.Font.Gotham
-    Mark.TextSize = 14
-    Mark.TextColor3 = self.Theme.Text
-    Mark.TextXAlignment = Enum.TextXAlignment.Left
-    Mark.Text = textBase or "kittyware.cc"
     Mark.Parent = MarkGui
-    Round(Mark, 6)
+    Round(Mark, 8)
     Stroke(Mark, self.Theme.Border, 1)
+    Mark.ZIndex = 10000
 
-    -- ensure topmost
-    pcall(function() Mark.ZIndex = 9999 end)
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -12, 1, 0)
+    Label.Position = UDim2.new(0, 8, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Font = Enum.Font.GothamSemibold
+    Label.TextSize = 13
+    Label.TextColor3 = textColor
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Text = textBase or "kittyware.cc"
+    Label.Parent = Mark
+
+    -- small subtle shadow via UIStroke on label background
+    pcall(function() Mark.UIStroke.Thickness = 0.8 end)
 
     self._Watermark = Mark
     self._WatermarkBase = textBase or "kittyware.cc"
 
-    local accum = 0
-    local last = tick()
+    -- draggable watermark
+    do
+        local dragging, dragStart, startPos = false, nil, nil
+        Mark.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = Mark.Position
+            end
+        end)
+        Mark.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = input.Position - dragStart
+                Mark.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+    end
+
+    -- FPS smoothing: moving average of last N frames
+    local frameTimes = {}
+    local maxSamples = 10
     RunService.RenderStepped:Connect(function(dt)
-        accum = accum + dt
-        if accum >= 0.25 then
-            accum = 0
-            local now = tick()
-            local fps = math.floor(1 / math.max(0.0001, now - last) + 0.5)
-            last = now
-            local ping = SafePing()
-            local base = self._WatermarkBase or "kittyware.cc"
-            pcall(function()
-                Mark.Text = string.format("%s | %d FPS | %d ms", base, fps, ping)
-            end)
-        end
+        table.insert(frameTimes, dt)
+        if #frameTimes > maxSamples then table.remove(frameTimes, 1) end
+        local sum = 0
+        for _, t in ipairs(frameTimes) do sum = sum + t end
+        local avg = sum / #frameTimes
+        local fps = math.floor(1 / math.max(0.0001, avg) + 0.5)
+        local ping = SafePing()
+        local base = self._WatermarkBase or "kittyware.cc"
+        pcall(function() Label.Text = string.format("%s  •  %d FPS  •  %d ms", base, fps, ping) end)
     end)
 end
 
 ---------------------------------------------------------------------
 -- THEME SWITCHER
 ---------------------------------------------------------------------
-
 function Library:SetTheme(name)
     local theme = self.Themes[name]
     if not theme then return end
     self.Theme = theme
-    -- Note: live re-theming of existing UI would require iterating instances.
-    -- For simplicity, recommend rebuilding UI after theme change.
+    -- recommend rebuilding UI to fully apply theme
 end
 
 ---------------------------------------------------------------------
 -- UI TOGGLE KEYBIND
 ---------------------------------------------------------------------
-
 Library.ToggleKey = Enum.KeyCode.RightShift
-
-function Library:SetToggleKey(keycode)
-    self.ToggleKey = keycode
-end
-
-function Library:ToggleUI()
-    self._UIVisible = not self._UIVisible
-    ScreenGui.Enabled = self._UIVisible
-end
-
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Library.ToggleKey then
-        Library:ToggleUI()
-    end
-end)
+function Library:SetToggleKey(keycode) self.ToggleKey = keycode end
+function Library:ToggleUI() self._UIVisible = not self._UIVisible; ScreenGui.Enabled = self._UIVisible end
+UserInputService.InputBegan:Connect(function(input, gp) if gp then return end; if input.KeyCode == Library.ToggleKey then Library:ToggleUI() end end)
 
 ---------------------------------------------------------------------
--- CONFIG TAB HELPER (fixed + dynamic dropdown)
+-- CONFIG TAB HELPER (dynamic dropdown, safe)
 ---------------------------------------------------------------------
-
 function Library:AttachConfigTab(Window, tabName)
     local Tab = Window:Tab(tabName or "Configs")
     local Box = Tab:Group("Configs", "Left")
 
     local currentConfig = nil
-
     local configs = self:GetConfigs()
-    local ConfigDropdown = Box:Dropdown("Config", configs, (configs[1] or "None"), function(v)
-        currentConfig = v
-    end)
-
-    -- ensure dropdown has dynamic list setter
-    if ConfigDropdown and ConfigDropdown.setList then
-        ConfigDropdown.setList(configs)
-    end
+    local ConfigDropdown = Box:Dropdown("Config", configs, (configs[1] or "None"), function(v) currentConfig = v end)
+    if ConfigDropdown and ConfigDropdown.setList then ConfigDropdown.setList(configs) end
 
     Box:Button("Refresh", function()
         local newConfigs = self:GetConfigs()
@@ -1370,38 +1133,21 @@ function Library:AttachConfigTab(Window, tabName)
     end)
 
     Box:Button("Save", function()
-        if not currentConfig or currentConfig == "None" then
-            currentConfig = "default"
-        end
+        if not currentConfig or currentConfig == "None" then currentConfig = "default" end
         self:SaveConfig(currentConfig)
     end)
 
     Box:Button("Load", function()
-        if currentConfig and currentConfig ~= "None" then
-            self:LoadConfig(currentConfig)
-        else
-            self:Notify("Select a config first.", 2)
-        end
+        if currentConfig and currentConfig ~= "None" then self:LoadConfig(currentConfig) else self:Notify("Select a config first.", 2) end
     end)
 
     local ThemeBox = Tab:Group("Appearance", "Right")
-
-    ThemeBox:Dropdown("Theme", {"Pastel", "Dark"}, "Pastel", function(v)
-        self:SetTheme(v)
-        self:Notify("Theme changed. Rebuild UI to apply fully.", 3)
-    end)
-
-    ThemeBox:Toggle("Blur Background", false, function(v)
-        self:SetBlur(v)
-    end)
-
-    ThemeBox:Button("Open Config Folder", function()
-        self:Notify("Config folder: securewatch-ui/configs", 3)
-    end)
+    ThemeBox:Dropdown("Theme", {"Pastel","Dark"}, "Pastel", function(v) self:SetTheme(v); self:Notify("Theme changed. Rebuild UI to apply fully.", 3) end)
+    ThemeBox:Toggle("Blur Background", false, function(v) self:SetBlur(v) end)
+    ThemeBox:Button("Open Config Folder", function() self:Notify("Config folder: securewatch-ui/configs", 3) end)
 end
 
 ---------------------------------------------------------------------
 -- RETURN LIBRARY
 ---------------------------------------------------------------------
-
 return Library
