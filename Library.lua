@@ -259,6 +259,9 @@ function Library:CreateGroupbox(name, parent)
     function Box:Keybind(text, defaultKey, mode, callback)
         -- placeholder
     end
+    function Box:Slider(text, min, max, default, callback)
+       return Library:CreateSlider(text, min, max, default, callback, self.Scroll)
+    end
 
     return Box
 end
